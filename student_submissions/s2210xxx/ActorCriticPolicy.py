@@ -7,124 +7,6 @@ import torch.optim as optim
 from collections import deque
 import os
 
-
-class SmartGreedy(Policy):
-    def __init__(self):
-        pass
-        
-    def get_action(self, observation, info):
-        """Implements a smarter greedy approach"""
-        list_prods = observation["products"]
-        stocks = observation["stocks"]
-        
-        best_action = None
-        best_score = float('-inf')
-        
-        # For each product that has remaining quantity
-        for prod in list_prods:
-            if prod["quantity"] <= 0:
-                continue
-                
-            prod_size = prod["size"]
-            prod_w, prod_h = prod_size
-            
-            # Try each stock
-            for stock_idx, stock in enumerate(stocks):
-                stock_w, stock_h = self._get_stock_size_(stock)
-                
-                # Skip if product doesn't fit
-                if stock_w < prod_w or stock_h < prod_h:
-                    continue
-                    
-                # Try each possible position
-                for pos_x in range(stock_w - prod_w + 1):
-                    for pos_y in range(stock_h - prod_h + 1):
-                        if not self._can_place_(stock, (pos_x, pos_y), prod_size):
-                            continue
-                            
-                        # Calculate score based on position
-                        score = self._calculate_placement_score(
-                            pos_x, pos_y,
-                            prod_w, prod_h,
-                            stock_w, stock_h
-                        )
-                        
-                        # Update best action if this is better
-                        if score > best_score:
-                            best_score = score
-                            best_action = {
-                                "stock_idx": stock_idx,
-                                "size": prod_size,
-                                "position": (pos_x, pos_y)
-                            }
-        
-        # If no valid action found, fall back to random valid action
-        if best_action is None:
-            return self._get_random_valid_action(observation)
-            
-        return best_action
-    
-    def _calculate_placement_score(self, pos_x, pos_y, prod_w, prod_h, stock_w, stock_h):
-        """Calculate a score for placing a product at a given position"""
-        score = 0
-        
-        # 1. Prefer corners
-        if (pos_x == 0 or pos_x + prod_w == stock_w) and \
-           (pos_y == 0 or pos_y + prod_h == stock_h):
-            score += 5
-            
-        # 2. Prefer edges
-        elif pos_x == 0 or pos_x + prod_w == stock_w or \
-             pos_y == 0 or pos_y + prod_h == stock_h:
-            score += 3
-            
-        # 3. Penalize central placements
-        center_x = abs(pos_x + prod_w/2 - stock_w/2)
-        center_y = abs(pos_y + prod_h/2 - stock_h/2)
-        score -= (center_x + center_y) * 0.1
-        
-        return score
-    
-    def _get_random_valid_action(self, observation):
-        """Fallback method to get a random valid action"""
-        list_prods = observation["products"]
-        
-        for prod in list_prods:
-            if prod["quantity"] <= 0:
-                continue
-                
-            prod_size = prod["size"]
-            
-            # Try each stock randomly
-            stock_indices = list(range(len(observation["stocks"])))
-            np.random.shuffle(stock_indices)
-            
-            for stock_idx in stock_indices:
-                stock = observation["stocks"][stock_idx]
-                stock_w, stock_h = self._get_stock_size_(stock)
-                
-                if stock_w < prod_size[0] or stock_h < prod_size[1]:
-                    continue
-                    
-                # Try random positions
-                for _ in range(10):  # Limit attempts
-                    pos_x = np.random.randint(0, stock_w - prod_size[0] + 1)
-                    pos_y = np.random.randint(0, stock_h - prod_size[1] + 1)
-                    
-                    if self._can_place_(stock, (pos_x, pos_y), prod_size):
-                        return {
-                            "stock_idx": stock_idx,
-                            "size": prod_size,
-                            "position": (pos_x, pos_y)
-                        }
-        
-        # If still no valid action found, return a default action
-        return {
-            "stock_idx": 0,
-            "size": [1, 1],
-            "position": (0, 0)
-        }
-
 class ActorNetwork(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(ActorNetwork, self).__init__()
@@ -357,7 +239,7 @@ class ActorCriticPolicy(Policy):
                     break
         
         # Calculate immediate reward
-        immediate_reward = self._calculate_reward(valid_action, observation, info)
+        immediate_reward = self.calculate_reward(valid_action, observation, info)
         
         # Update metrics and logging
         self.episode_metrics['steps'] += 1
@@ -365,7 +247,7 @@ class ActorCriticPolicy(Policy):
         self.episode_metrics['filled_ratios'].append(info.get('filled_ratio', 0))
         
         # Print progress every 100 steps
-        if self.episode_metrics['steps'] % 100 == 0:
+        if self.episode_metrics['steps'] % 100 == 0 or self.episode_metrics['steps'] == 1:
             print("\n" + "="*30 + f" Step {self.episode_metrics['steps']} Summary " + "="*30)
             print("\n1. Action Details:")
             print(f"  Stock Index: {valid_action['stock_idx']}")
@@ -395,7 +277,7 @@ class ActorCriticPolicy(Policy):
         self.prev_filled_ratio = info.get('filled_ratio', 0)
         return valid_action
 
-    def _calculate_reward(self, valid_action, observation, info):
+    def calculate_reward(self, valid_action, observation, info):
         """Calculate comprehensive reward with improved components"""
         if valid_action is None:
             return -1.0  # Tăng penalty cho invalid action
@@ -460,7 +342,7 @@ class ActorCriticPolicy(Policy):
         # print(f"3. Area Efficiency: {area_reward:.3f}")
         # print(f"4. Center Penalty: {center_penalty:.3f}")
         # print(f"5. Size Bonus: {0.5 if relative_size > 0.3 else 0:.3f}")
-        print(f"Total Reward: {reward:.3f}")
+        # print(f"Total Reward: {reward:.3f}")
         
         return reward
 
@@ -469,7 +351,7 @@ class ActorCriticPolicy(Policy):
             return
         
         # Debug print
-        print(f"\nUpdating policy with {len(self.current_episode)} transitions")
+        # print(f"\nUpdating policy with {len(self.current_episode)} transitions")
         
         try:
             # Move batch data to MPS
@@ -526,18 +408,23 @@ class ActorCriticPolicy(Policy):
             
             # Update critic
             value_pred = self.critic(states).squeeze()
-            critic_loss = F.mse_loss(value_pred, returns)
+            if value_pred.dim() == 0:
+                value_pred = value_pred.unsqueeze(0)
+            if returns.dim() == 0:
+                returns = returns.unsqueeze(0)
             
+            critic_loss = F.mse_loss(value_pred, returns)
+
             self.critic_optimizer.zero_grad()
             critic_loss.backward()
             self.critic_optimizer.step()
-            
+
             print(f"Losses - Actor: {actor_loss.item():.3f}, Critic: {critic_loss.item():.3f}")
-            
+
             # Store losses for logging
             self.last_actor_loss = actor_loss.item()
             self.last_critic_loss = critic_loss.item()
-            
+
             # Print training update
             # print("\n" + "="*30 + " Training Update " + "="*30)
             # print(f"Batch Statistics:")
