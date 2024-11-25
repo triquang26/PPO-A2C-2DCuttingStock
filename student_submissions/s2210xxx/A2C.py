@@ -5,9 +5,11 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 from collections import deque
-from policy import Policy
 import matplotlib.pyplot as plt
-
+from policy import Policy
+# ===========================
+# Base Policy Class (Placeholder)
+# ===========================
 class CuttingStockMetrics:
     def __init__(self):
         # Episode-level metrics
@@ -38,6 +40,68 @@ class CuttingStockMetrics:
             'reward': deque(maxlen=10)
         }
 
+class EpisodeEvaluator:
+    def __init__(self):
+        self.metrics = {
+            'episode_number': 0,
+            'steps': 0,
+            'filled_ratio': 0.0,
+            'total_reward': 0.0,
+            'total_waste': 0.0,
+            'waste_per_stock': 0.0,
+            'num_stocks_used': 0
+        }
+    
+    def calculate_waste(self, observation):
+        """Calculate waste for all used stocks"""
+        total_waste = 0
+        used_stocks = 0
+        
+        for stock in observation['stocks']:
+            if np.any(stock > 0):  # Stock has been used
+                stock_area = stock.shape[0] * stock.shape[1]
+                used_area = np.sum(stock > 0)
+                waste = stock_area - used_area
+                total_waste += waste
+                used_stocks += 1
+                
+        return {
+            'total_waste': total_waste,
+            'num_stocks': used_stocks,
+            'waste_per_stock': total_waste / used_stocks if used_stocks > 0 else 0
+        }
+
+    def evaluate_episode(self, observation, info, episode_data):
+        """Calculate comprehensive episode quality score"""
+        waste_metrics = self.calculate_waste(observation)
+        
+        self.metrics.update({
+            'episode_number': episode_data['episode_number'],
+            'steps': episode_data['steps'],
+            'filled_ratio': info['filled_ratio'],
+            'total_reward': episode_data['total_reward'],
+            'total_waste': waste_metrics['total_waste'],
+            'waste_per_stock': waste_metrics['waste_per_stock'],
+            'num_stocks_used': waste_metrics['num_stocks']
+        })
+        
+        return self.get_summary()
+    
+    def get_summary(self):
+        """Return formatted summary of episode performance"""
+        summary = f"\n{'='*20} Episode {self.metrics['episode_number']} Quality Report {'='*20}\n"
+        summary += f"Steps: {self.metrics['steps']}\n"
+        summary += f"Filled Ratio: {self.metrics['filled_ratio']:.3f}\n"
+        summary += f"Total Waste: {self.metrics['total_waste']}\n"
+        summary += f"Number of Stocks Used: {self.metrics['num_stocks_used']}\n"
+        summary += f"Waste per Stock: {self.metrics['waste_per_stock']:.1f}\n"
+        summary += f"Total Reward: {self.metrics['total_reward']:.2f}\n"
+        summary += "="*70
+        return summary
+
+# ===========================
+# Neural Network Definitions
+# ===========================
 class ActorNetwork(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(ActorNetwork, self).__init__()
@@ -92,7 +156,10 @@ class CriticNetwork(nn.Module):
             
         return value
 
-class PPOMemory:
+# ===========================
+# Memory for A2C
+# ===========================
+class A2CMemory:
     def __init__(self):
         self.states = []
         self.actions = []
@@ -117,7 +184,10 @@ class PPOMemory:
         self.log_probs.append(log_prob)
         self.dones.append(done)
 
-class ProximalPolicyOptimization(Policy):
+# ===========================
+# Advantage Actor-Critic (A2C) Class
+# ===========================
+class AdvantageActorCritic(Policy):
     def __init__(self):
         super().__init__()
         # State and action dimensions
@@ -130,7 +200,7 @@ class ProximalPolicyOptimization(Policy):
         self.training = True
         
         # Initialize memory
-        self.memory = PPOMemory()
+        self.memory = A2CMemory()
         
         # Determine device
         self.device = (
@@ -140,41 +210,97 @@ class ProximalPolicyOptimization(Policy):
         )
         print(f"Using device: {self.device}")
         
-        # PPO parameters
-        self.clip_epsilon = 0.2
+        # Training parameters
         self.gamma = 0.99
-        self.gae_lambda = 0.95
         self.entropy_coef = 0.01
-        self.num_epochs = 10
-        
-        # Training setup
-        self.steps = 0
-        self.prev_filled_ratio = 0.0
         
         # Model saving
         self.model_path = "saved_models/"
         os.makedirs(self.model_path, exist_ok=True)
         
-        # Add tracking for products
+        # Metrics and logging
+        self.metrics = CuttingStockMetrics()
+        self.debug_mode = True
+        self.prev_filled_ratio = 0
+        self.log_file = open('a2c_reward_log.txt', 'w')
+        
+        # Episode tracking
+        self.steps = 0
         self.initial_products = None
         self.prev_total_products = None
         
-        # Debug mode flag
-        self.debug_mode = True
-        
-        # Initialize metrics
-        self.metrics = CuttingStockMetrics()
-        self.log_file = open('ppo_reward_log.txt', 'w')
-        
+        # Reward tracking
         self.last_reward = 0
-        self.reward_history = deque(maxlen=10)  # Lưu 10 rewards gần nhất
+        self.reward_history = deque(maxlen=10)
+        
+        # Loss tracking
+        self.last_actor_loss = None
+        self.last_critic_loss = None
+
+    def calculate_stock_filled_ratio(self, stock):
+        """Calculate the filled ratio of a single stock"""
+        if stock is None:
+            return 0.0
+        total_area = stock.shape[0] * stock.shape[1]
+        filled_area = np.sum(stock != -1)  # Count non-empty cells
+        return filled_area / total_area if total_area > 0 else 0.0
+
+    def calculate_edge_utilization(self, stock):
+        """Calculate how well edges are utilized"""
+        if stock is None:
+            return 0
+        edges_used = 0
+        height, width = stock.shape
+        
+        # Check top and bottom edges
+        edges_used += np.sum(stock[0, :] != -1)  # Top edge
+        edges_used += np.sum(stock[-1, :] != -1)  # Bottom edge
+        
+        # Check left and right edges
+        edges_used += np.sum(stock[:, 0] != -1)  # Left edge
+        edges_used += np.sum(stock[:, -1] != -1)  # Right edge
+        
+        total_edge_cells = 2 * (height + width)
+        return edges_used / total_edge_cells if total_edge_cells > 0 else 0
+
+    def calculate_corner_placements(self, stock):
+        """Calculate how many corners are utilized"""
+        if stock is None:
+            return 0
+        corners = 0
+        height, width = stock.shape
+        
+        # Check all four corners
+        corners += (stock[0, 0] != -1)     # Top-left
+        corners += (stock[0, -1] != -1)    # Top-right
+        corners += (stock[-1, 0] != -1)    # Bottom-left
+        corners += (stock[-1, -1] != -1)   # Bottom-right
+        
+        return corners
+
+    def update_metrics(self, observation, action, info):
+        """Update metrics after each action"""
+        if action is not None:
+            current_stock = observation['stocks'][action['stock_idx']]
+            
+            # Update episode metrics
+            self.metrics.episode_metrics['filled_ratios'].append(info['filled_ratio'])
+            self.metrics.episode_metrics['edge_utilization'].append(
+                self.calculate_edge_utilization(current_stock)
+            )
+            self.metrics.episode_metrics['corner_placements'].append(
+                self.calculate_corner_placements(current_stock)
+            )
+            
+            # Update running averages
+            self.metrics.running_averages['filled_ratio'].append(info['filled_ratio'])
 
     def initialize_networks(self, observation):
         """Initialize networks after getting first observation"""
         if self.max_products is None:
             self.max_products = len(observation["products"])
-            stock_features = 100 * 3
-            product_features = self.max_products * 3
+            stock_features = 100 * 3  # max_stocks * features_per_stock
+            product_features = self.max_products * 3  # max_products * features_per_product
             global_features = 2
             self.state_dim = stock_features + product_features + global_features
             
@@ -195,61 +321,24 @@ class ProximalPolicyOptimization(Policy):
             # Initialize state normalization
             self.state_mean = torch.zeros(self.state_dim).to(self.device)
             self.state_std = torch.ones(self.state_dim).to(self.device)
-
-    def preprocess_observation(self, observation, info):
-        """Convert observation to state tensor with fixed dimensions"""
-        stocks = observation["stocks"]
-        products = observation["products"]
-        
-        # Stock features - ensure 100 stocks
-        stock_features = []
-        for stock in stocks[:100]:
-            stock_w, stock_h = self._get_stock_size_(stock)
-            used_space = np.sum(stock != -1)
-            total_space = stock_w * stock_h
-            stock_features.extend([
-                stock_w / 10.0,  # Normalized width
-                stock_h / 10.0,  # Normalized height
-                used_space / total_space  # Utilization ratio
-            ])
-        
-        # Pad if lacking stocks
-        while len(stock_features) < 300:
-            stock_features.extend([0, 0, 0])
-        
-        # Product features - ensure max_products
-        prod_features = []
-        for prod in products[:self.max_products]:
-            if prod["quantity"] > 0:
-                prod_features.extend([
-                    prod["size"][0] / 10.0,  # Normalized width
-                    prod["size"][1] / 10.0,  # Normalized height
-                    min(prod["quantity"], 10) / 10.0  # Normalized quantity
-                ])
-        
-        # Pad if lacking products
-        while len(prod_features) < self.max_products * 3:
-            prod_features.extend([0, 0, 0])
-        
-        # Global features
-        global_features = [
-            info.get('filled_ratio', 0),
-            self.steps / 1000.0  # Normalized step count
-        ]
-        
-        # Combine all features
-        state = np.array(stock_features + prod_features + global_features, dtype=np.float32)
-        return torch.FloatTensor(state)
-
+    
+    def normalize_state(self, state):
+        state = torch.FloatTensor(state).to(self.device)
+        return (state - self.state_mean) / (self.state_std + 1e-8)
+    
+    def update_state_normalizer(self, state):
+        state = torch.FloatTensor(state).to(self.device)
+        self.state_mean = 0.99 * self.state_mean + 0.01 * state.mean()
+        self.state_std = 0.99 * self.state_std + 0.01 * state.std()
+    
     def get_action(self, observation, info):
         # Initialize networks if first time
         if self.max_products is None:
             self.initialize_networks(observation)
         
-        # Initialize initial_products if not set
+        # Khởi tạo initial_products nếu chưa có
         if self.initial_products is None:
             self.initial_products = sum(prod["quantity"] for prod in observation["products"])
-            self.prev_total_products = self.initial_products
         
         state = self.preprocess_observation(observation, info)
         state = self.normalize_state(state).unsqueeze(0)
@@ -257,8 +346,8 @@ class ProximalPolicyOptimization(Policy):
         with torch.no_grad():
             logits = self.actor(state)
             
-            # Increase exploration
-            temperature = max(1.5 - (self.steps / 15000), 0.7)
+            # Tăng exploration
+            temperature = max(1.5 - (self.steps / 15000), 0.7)  # Tăng temperature và giảm chậm hơn
             logits = logits / temperature
             
             dist = torch.distributions.Categorical(logits=logits)
@@ -278,42 +367,115 @@ class ProximalPolicyOptimization(Policy):
         
         self.steps += 1
         
-        # Add logging every 100 steps
+        # Add logging after getting action
         if self.debug_mode and self.steps % 100 == 0:
             self._log_step_summary(observation, placement_action, info)
         
         return placement_action
-
-    def normalize_state(self, state):
-        state = torch.FloatTensor(state).to(self.device)
-        return (state - self.state_mean) / (self.state_std + 1e-8)
-    
-    def update_state_normalizer(self, state):
-        state = torch.FloatTensor(state).to(self.device)
-        self.state_mean = 0.99 * self.state_mean + 0.01 * state.mean()
-        self.state_std = 0.99 * self.state_std + 0.01 * state.std()
+    def _log_step_summary(self, observation, action, info):
+        """Log detailed summary of current step"""
+        print(f"\n{'='*30} Step {self.steps} Summary {'='*30}\n")
+        
+        # 1. Efficiency Metrics
+        used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
+        current_total_products = sum(prod["quantity"] for prod in observation["products"])
+        products_completed = self.initial_products - current_total_products
+        
+        print("1. Efficiency Metrics:")
+        print(f"  ├── Stocks Used: {used_stocks}")
+        print(f"  ├── Products Completed: {products_completed}/{self.initial_products} ({(products_completed/self.initial_products)*100:.1f}%)")
+        print(f"  └── Products Remaining: {current_total_products}")
+        
+        # 2. Current Action Analysis
+        print("\n2. Current Action:")
+        if action is not None:
+            current_stock = observation['stocks'][action['stock_idx']]
+            stock_ratio = self.calculate_stock_filled_ratio(current_stock)
+            
+            print(f"  ├── Stock Index: {action['stock_idx']}")
+            print(f"  ├── Position: {action['position']}")
+            print(f"  ├── Product Size: {action['size']}")
+            print(f"  ├── Current Stock Fill Ratio: {stock_ratio:.3f}")
+            
+            # Evaluate action quality
+            if stock_ratio > 0.8:
+                print("  └── Quality: EXCELLENT ⭐⭐⭐ (Stock utilization > 80%)")
+            elif stock_ratio > 0.6:
+                print("  └── Quality: GOOD ⭐⭐ (Stock utilization > 60%)")
+            elif stock_ratio > 0.4:
+                print("  └── Quality: FAIR ⭐ (Stock utilization > 40%)")
+            else:
+                print("  └── Quality: POOR ⚠️ (Low stock utilization)")
+        else:
+            print("  └── No valid action found ❌")
+        
+        # 3. Training Progress
+        print("\n3. Training Progress:")
+        print(f"  ├── Current Reward: {self.last_reward:.3f}")
+        avg_reward = np.mean(list(self.reward_history)) if self.reward_history else 0
+        print(f"  ├── Average Reward (last 10): {avg_reward:.3f}")
+        if hasattr(self, 'last_actor_loss') and hasattr(self, 'last_critic_loss'):
+            print(f"  ├── Actor Loss: {self.last_actor_loss:.3f}" if self.last_actor_loss is not None else "  ├── Actor Loss: N/A")
+            print(f"  └── Critic Loss: {self.last_critic_loss:.3f}" if self.last_critic_loss is not None else "  └── Critic Loss: N/A")
+    def preprocess_observation(self, observation, info):
+        """Convert observation to state tensor with fixed dimensions"""
+        stocks = observation["stocks"]
+        products = observation["products"]
+        
+        # Stock features - đảm bảo đủ 100 stocks
+        stock_features = []
+        for stock in stocks[:100]:  # Lấy tối đa 100 stocks
+            stock_w, stock_h = self._get_stock_size_(stock)
+            used_space = np.sum(stock != -1)
+            total_space = stock_w * stock_h
+            stock_features.extend([
+                stock_w / 10.0,  # Normalized width
+                stock_h / 10.0,  # Normalized height
+                used_space / total_space  # Utilization ratio
+            ])
+        
+        # Pad nếu thiếu stocks
+        while len(stock_features) < 300:  # 100 stocks * 3 features
+            stock_features.extend([0, 0, 0])
+        
+        # Product features - đảm bảo đủ 18 products
+        prod_features = []
+        for prod in products[:self.max_products]:  # Lấy tối đa số products từ môi trường
+            if prod["quantity"] > 0:
+                prod_features.extend([
+                    prod["size"][0] / 10.0,  # Normalized width
+                    prod["size"][1] / 10.0,  # Normalized height
+                    min(prod["quantity"], 10) / 10.0  # Normalized quantity
+                ])
+        
+        # Pad nếu thiếu products
+        while len(prod_features) < self.max_products * 3:  # max_products * 3 features
+            prod_features.extend([0, 0, 0])
+        
+        global_features = [
+            info.get('filled_ratio', 0),
+            self.steps / 1000.0  # Normalized step count
+        ]
+        
+        # Combine all features
+        state = np.array(stock_features + prod_features + global_features, dtype=np.float32)
+        return torch.FloatTensor(state)
     
     def convert_action(self, action_idx, observation):
         # Convert network output to placement parameters
         """
         Convert an action index into a valid product placement within the given observation.
 
-        This function maps the action index to a specific stock and position, then attempts
-        to place a product from the observation's list of products onto the selected stock.
-        If the placement is valid, it returns a dictionary containing the stock index, the
-        product size, and the position on the stock. If no valid placement is found, it falls
-        back to a method that attempts to find a random valid placement.
-
         Args:
             action_idx (int): The index of the action chosen by the policy network.
-            observation (dict): A dictionary containing the current state, including stocks
-                and products with their respective attributes.
+            observation (dict): A dictionary containing the current state.
 
         Returns:
-            dict: A dictionary with keys 'stock_idx', 'size', and 'position', representing
-                the stock index, product size, and placement position, respectively. Returns
-                None if no valid placement can be found.
+            dict: A dictionary with keys 'stock_idx', 'size', and 'position'.
         """
+        if action_idx is None:
+            return None
+
         max_stocks = len(observation["stocks"])
         stock_idx = min(action_idx // 25, max_stocks - 1)
         position = action_idx % 25
@@ -345,34 +507,19 @@ class ProximalPolicyOptimization(Policy):
         
         return valid_action
     
-    def compute_gae(self, rewards, values, dones):
-        """
-        Computes the Generalized Advantage Estimation (GAE) for a given trajectory.
-
-        Args:
-            rewards (list): A list of rewards for the trajectory.
-            values (list): A list of estimated values for the trajectory.
-            dones (list): A list of done flags for the trajectory.
-
-        Returns:
-            torch.Tensor: A tensor of shape (trajectory length,) containing the GAE values.
-        """
+    def compute_advantages(self, rewards, values, dones):
+        """Compute advantages using TD(0)"""
         advantages = []
-        gae = 0
-        
         for t in reversed(range(len(rewards))):
             if t == len(rewards) - 1:
                 next_value = 0
             else:
                 next_value = values[t + 1]
-                
             delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
-            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
-            advantages.insert(0, gae)
-            
+            advantages.insert(0, delta)  # TD(0) advantage
         return torch.tensor(advantages, dtype=torch.float32).to(self.device)
     
-    def update_policy(self, reward=None, done=None, info = None):
+    def update_policy(self, reward=None, done=None, info=None):
         """
         Update policy with current reward and done status
         
@@ -385,13 +532,13 @@ class ProximalPolicyOptimization(Policy):
             self.memory.rewards[-1] = reward
             self.memory.dones[-1] = done
 
-        # Only perform PPO update when we have enough experience
-        if len(self.memory.states) >= 128:  # You can adjust this batch size
+        # Only perform A2C update when we have enough experience
+        if len(self.memory.states) >= 128:  # Adjust batch size as needed
             self._update_networks()
             self.memory.clear()
             
     def _update_networks(self):
-        """Internal method to perform the actual PPO update"""
+        """Internal method to perform the actual A2C update"""
         if not self.training or len(self.memory.states) == 0:
             return
             
@@ -403,55 +550,47 @@ class ProximalPolicyOptimization(Policy):
         old_log_probs = torch.tensor(self.memory.log_probs, dtype=torch.float32).to(self.device)
         dones = torch.tensor(self.memory.dones, dtype=torch.float32).to(self.device)
         
-        # Calculate advantages and returns
-        advantages = self.compute_gae(rewards, old_values, dones)
-        returns = advantages + old_values
+        # Calculate advantages and returns using TD(0)
+        advantages = self.compute_advantages(rewards, old_values, dones)
+        returns = advantages + old_values  # In A2C, returns = advantage + value
         
         # Normalize advantages
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         print(f"\nUpdating networks with {len(self.memory.states)} samples...")
         
-        # PPO update loop
-        for _ in range(self.num_epochs):
-            # Get current policy distributions
-            logits = self.actor(states)
-            dist = torch.distributions.Categorical(logits=logits)
-            new_log_probs = dist.log_prob(actions)
-            entropy = dist.entropy().mean()
-            
-            # Calculate policy ratio and surrogate objectives
-            ratio = torch.exp(new_log_probs - old_log_probs)
-            surr1 = ratio * advantages
-            surr2 = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * advantages
-            actor_loss = -torch.min(surr1, surr2).mean()
-            
-            # Value function loss
-            value_pred = self.critic(states)
-            value_clipped = old_values + torch.clamp(
-                value_pred - old_values, -self.clip_epsilon, self.clip_epsilon
-            )
-            value_loss_1 = (value_pred - returns).pow(2)
-            value_loss_2 = (value_clipped - returns).pow(2)
-            critic_loss = 0.5 * torch.max(value_loss_1, value_loss_2).mean()
-            
-            # Store the losses
-            self.last_actor_loss = actor_loss.item()
-            self.last_critic_loss = critic_loss.item()
-            
-            # Total loss
-            total_loss = actor_loss + critic_loss - self.entropy_coef * entropy
-            print(f"Losses - Actor: {actor_loss.item():.3f}, Critic: {critic_loss.item():.3f}")
-            # Update networks
-            self.actor_optimizer.zero_grad()
-            self.critic_optimizer.zero_grad()
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
-            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
-            self.actor_optimizer.step()
-            self.critic_optimizer.step()
+        # Compute current policy distributions
+        logits = self.actor(states)
+        dist = torch.distributions.Categorical(logits=logits)
+        new_log_probs = dist.log_prob(actions)
+        entropy = dist.entropy().mean()
         
-        # Update learning rates
+        # Calculate actor loss (policy gradient)
+        actor_loss = -(new_log_probs * advantages).mean()
+        
+        # Calculate critic loss (value function loss)
+        value_pred = self.critic(states).squeeze(-1)
+        returns = returns.unsqueeze(1)  # Change shape from [128] to [128, 1]
+        critic_loss = F.mse_loss(value_pred, returns)
+        
+        # Store the losses
+        self.last_actor_loss = actor_loss.item()
+        self.last_critic_loss = critic_loss.item()
+        
+        # Total loss
+        total_loss = actor_loss + 0.5 * critic_loss - self.entropy_coef * entropy
+        print(f"Losses - Actor: {actor_loss.item():.3f}, Critic: {critic_loss.item():.3f}")
+        
+        # Update networks
+        self.actor_optimizer.zero_grad()
+        self.critic_optimizer.zero_grad()
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+        self.actor_optimizer.step()
+        self.critic_optimizer.step()
+        
+        # Update learning rates if using schedulers
         mean_reward = rewards.mean().item()
         self.actor_scheduler.step(mean_reward)
         self.critic_scheduler.step(critic_loss.item())
@@ -482,45 +621,83 @@ class ProximalPolicyOptimization(Policy):
             return False
     
     def calculate_reward(self, action, observation, info):
+        """Calculate comprehensive reward similar to PPO"""
         if action is None:
-            reward = -2.0
-        else:
-            reward = 0
-            # 1. Thưởng cho việc sử dụng hiệu quả stock hiện tại
-            current_stock = observation['stocks'][action['stock_idx']]
-            stock_filled_ratio = self.calculate_stock_filled_ratio(current_stock)
+            return -2.0
+            
+        reward = 0
+        current_filled_ratio = info.get('filled_ratio', 0)
+        filled_ratio_change = current_filled_ratio - self.prev_filled_ratio
+        
+        # 1. Filled Ratio Reward (30%)
+        filled_ratio_reward = filled_ratio_change * 15.0
+        reward += filled_ratio_reward
+        
+        # 2. Space Utilization (30%)
+        if action is not None:
+            stock = observation["stocks"][action["stock_idx"]]
+            pos_x, pos_y = action["position"]
+            size_w, size_h = action["size"]
+            
+            # Calculate stock utilization
+            stock_w, stock_h = self._get_stock_size_(stock)
+            stock_filled_ratio = self.calculate_stock_filled_ratio(stock)
             reward += stock_filled_ratio * 10.0
             
-            # 2. Phạt cho việc sử dụng nhiều stocks
-            used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
-            stock_penalty = -0.5 * used_stocks
-            reward += stock_penalty
-            
-            # 3. Thưởng đặc biệt cho việc hoàn thành products
-            total_remaining = sum(prod["quantity"] for prod in observation["products"])
-            if self.prev_total_products is None:
-                self.prev_total_products = total_remaining
-            products_completed = self.prev_total_products - total_remaining
-            
-            if products_completed > 0:
-                completion_bonus = products_completed * (5.0 / max(1, used_stocks))
-                reward += completion_bonus
-            
+            # Edge and corner bonuses
+            if pos_x == 0 or pos_x + size_w == stock_w:
+                reward += 0.2
+            if pos_y == 0 or pos_y + size_h == stock_h:
+                reward += 0.2
+            if (pos_x == 0 and pos_y == 0) or \
+               (pos_x == 0 and pos_y + size_h == stock_h) or \
+               (pos_x + size_w == stock_w and pos_y == 0) or \
+               (pos_x + size_w == stock_w and pos_y + size_h == stock_h):
+                reward += 0.3
+        
+        # 3. Product Completion Reward
+        total_remaining = sum(prod["quantity"] for prod in observation["products"])
+        if self.prev_total_products is None:
             self.prev_total_products = total_remaining
-
-        # Cập nhật last_reward và reward_history
+        products_completed = self.prev_total_products - total_remaining
+        
+        if products_completed > 0:
+            used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
+            completion_bonus = products_completed * (5.0 / max(1, used_stocks))
+            reward += completion_bonus
+            
+            # Extra bonus for completing products when few remain
+            if total_remaining <= 3:
+                reward += 2.0
+        
+        # 4. Stock Usage Penalty
+        used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
+        stock_penalty = -0.5 * used_stocks
+        reward += stock_penalty
+        
+        # 5. Waste Penalty
+        if action is not None:
+            waste_area = (stock_w * stock_h) - (size_w * size_h)
+            waste_penalty = -0.05 * (waste_area / (stock_w * stock_h))
+            reward += waste_penalty
+        
+        # Update tracking variables
+        self.prev_filled_ratio = current_filled_ratio
+        self.prev_total_products = total_remaining
+        
+        # Update reward history
         self.last_reward = reward
         self.reward_history.append(reward)
         
         return reward
-
     def calculate_stock_filled_ratio(self, stock):
         """Calculate filled ratio for a single stock"""
+        if stock is None:
+            return 0.0
         stock_w, stock_h = self._get_stock_size_(stock)
         total_area = stock_w * stock_h
         used_area = np.sum(stock != -1)
         return used_area / total_area
-    
     def calculate_space_utilization(self, stock, pos_x, pos_y, size_w, size_h):
         """Calculate how efficiently the remaining space can be used"""
         stock_w, stock_h = self._get_stock_size_(stock)
@@ -552,47 +729,11 @@ class ProximalPolicyOptimization(Policy):
         # Return weighted score
         return space_efficiency * 3.0 + remaining_ratio * 2.0
 
-    def calculate_reward(self, action, observation, info):
-        """Calculate comprehensive reward"""
-        if action is None:
-            return -2.0
-            
-        reward = 0
-        current_filled_ratio = info.get('filled_ratio', 0)
-        filled_ratio_change = current_filled_ratio - self.prev_filled_ratio
-        
-        # 1. Filled Ratio (30%)
-        filled_ratio_reward = filled_ratio_change * 15.0
-        reward += filled_ratio_reward
-        
-        # 2. Space Utilization (30%)
-        stock = observation["stocks"][action["stock_idx"]]
-        pos_x, pos_y = action["position"]
-        size_w, size_h = action["size"]
-        
-        space_reward = self.calculate_space_utilization(stock, pos_x, pos_y, size_w, size_h)
-        reward += space_reward
-        
-        # 3. Waste Penalty
-        stock_w, stock_h = self._get_stock_size_(stock)
-        waste_area = (stock_w * stock_h) - (size_w * size_h)
-        waste_penalty = -0.05 * (waste_area / (stock_w * stock_h))
-        reward += waste_penalty
-        
-        # 4. Completion Bonus
-        remaining_products = sum(prod['quantity'] for prod in observation['products'])
-        for prod in observation["products"]:
-            if prod["quantity"] == 1 and np.array_equal(prod["size"], action["size"]):
-                reward += 3.0
-                if remaining_products <= 3:
-                    reward += 2.0
-        
-        self.prev_filled_ratio = current_filled_ratio
-        return reward
     def calculate_stock_penalty(self, observation):
         used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock > 0))
         stock_penalty = -0.2 * used_stocks
         return stock_penalty
+
     def _is_good_pattern(self, pos_x, pos_y, size_w, size_h, stock):
         """Evaluate if the placement creates a good cutting pattern"""
         stock_w, stock_h = self._get_stock_size_(stock)
@@ -624,8 +765,8 @@ class ProximalPolicyOptimization(Policy):
                     
                     # Try random positions until a valid one is found
                     for _ in range(10):  # Limit attempts to avoid infinite loop
-                        pos_x = np.random.randint(0, stock_w - prod_w + 1)
-                        pos_y = np.random.randint(0, stock_h - prod_h + 1)
+                        pos_x = np.random.randint(0, max(1, stock_w - prod_w + 1))
+                        pos_y = np.random.randint(0, max(1, stock_h - prod_h + 1))
                         
                         if self._can_place_(stock, (pos_x, pos_y), prod["size"]):
                             return {
@@ -637,7 +778,7 @@ class ProximalPolicyOptimization(Policy):
         return None  # Return None if no valid action is found
     
     def evaluate_cutting_pattern(self, observation, action, info):
-        """Đánh giá chất lượng của một cutting pattern"""
+        """Evaluate the quality of a cutting pattern"""
         if action is None:
             return None
         
@@ -701,80 +842,71 @@ class ProximalPolicyOptimization(Policy):
         plt.tight_layout()
         plt.savefig(os.path.join(self.model_path, 'training_progress.png'))
         plt.close()
+    
+    # ===========================
+    # Helper Methods (Placeholders)
+    # ===========================
+    def _get_stock_size_(self, stock):
+        """
+        Placeholder method to extract stock size.
+        Replace with actual logic based on your environment's stock representation.
+        """
+        # Assuming stock is represented as a 2D NumPy array where -1 indicates unused space
+        # and positive integers indicate used space
+        return stock.shape[1], stock.shape[0]  # width, height
 
-    def _log_step_summary(self, observation, action, info):
-        """Log detailed summary of current step"""
-        print(f"\n{'='*30} Step {self.steps} Summary {'='*30}\n")
+    def _can_place_(self, stock, position, size):
+        """
+        Placeholder method to check if a product can be placed on the stock.
+        Replace with actual logic based on your environment's placement rules.
+        """
+        pos_x, pos_y = position
+        size_w, size_h = size
+        stock_w, stock_h = self._get_stock_size_(stock)
         
-        # 1. Efficiency Metrics
-        used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
-        current_total_products = sum(prod["quantity"] for prod in observation["products"])
-        products_completed = self.initial_products - current_total_products
+        # Check boundaries
+        if pos_x + size_w > stock_w or pos_y + size_h > stock_h:
+            return False
         
-        print("1. Efficiency Metrics:")
-        print(f"  ├── Stocks Used: {used_stocks}")
-        print(f"  ├── Products Completed: {products_completed}/{self.initial_products} ({(products_completed/self.initial_products)*100:.1f}%)")
-        print(f"  └── Products Remaining: {current_total_products}")
+        # Check if the space is free (assuming -1 indicates free space)
+        return np.all(stock[pos_y:pos_y+size_h, pos_x:pos_x+size_w] == -1)
+    
+    def _find_unusable_gaps(self, stock, min_size):
+        """Find number of small gaps that are too small for any remaining product"""
+        gaps = 0
+        # Implement gap detection logic here
+        # Example: Check for isolated empty spaces smaller than min_size x min_size
+        return gaps
+    
+    def _get_greedy_valid_action(self, observation):
+        """Find a valid action prioritizing larger products"""
+        # Sort products by area and remaining quantity
+        products = [(i, prod) for i, prod in enumerate(observation["products"]) if prod["quantity"] > 0]
+        products.sort(key=lambda x: (
+            x[1]["size"][0] * x[1]["size"][1] * x[1]["quantity"],  # Ưu tiên products có tổng diện tích lớn
+            x[1]["quantity"]  # Thứ yếu là số lượng còn lại
+        ), reverse=True)
         
-        # 2. Current Action Analysis
-        print("\n2. Current Action:")
-        if action is not None:
-            current_stock = observation['stocks'][action['stock_idx']]
-            stock_ratio = self.calculate_stock_filled_ratio(current_stock)
+        # Try each stock
+        for stock_idx, stock in enumerate(observation["stocks"]):
+            stock_w, stock_h = self._get_stock_size_(stock)
             
-            print(f"  ├── Stock Index: {action['stock_idx']}")
-            print(f"  ├── Position: {action['position']}")
-            print(f"  ├── Product Size: {action['size']}")
-            print(f"  ├── Current Stock Fill Ratio: {stock_ratio:.3f}")
-            
-            # Evaluate action quality
-            if stock_ratio > 0.8:
-                print("  └── Quality: EXCELLENT ⭐⭐⭐ (Stock utilization > 80%)")
-            elif stock_ratio > 0.6:
-                print("  └── Quality: GOOD ⭐⭐ (Stock utilization > 60%)")
-            elif stock_ratio > 0.4:
-                print("  └── Quality: FAIR ⭐ (Stock utilization > 40%)")
-            else:
-                print("  └── Quality: POOR ⚠️ (Low stock utilization)")
-        else:
-            print("  └── No valid action found ❌")
+            # Try each product
+            for _, prod in products:
+                size_w, size_h = prod["size"]
+                
+                # Try all valid positions
+                for pos_x in range(0, stock_w - size_w + 1):
+                    for pos_y in range(0, stock_h - size_h + 1):
+                        if self._can_place_(stock, (pos_x, pos_y), prod["size"]):
+                            return {
+                                "stock_idx": stock_idx,
+                                "size": prod["size"],
+                                "position": (pos_x, pos_y)
+                            }
         
-        # 3. Training Progress
-        print("\n3. Training Progress:")
-        print(f"  ├── Current Reward: {self.last_reward:.3f}")
-        avg_reward = np.mean(list(self.reward_history)) if self.reward_history else 0
-        print(f"  ├── Average Reward (last 10): {avg_reward:.3f}")
-        if hasattr(self, 'last_actor_loss') and hasattr(self, 'last_critic_loss'):
-            print(f"  ├── Actor Loss: {self.last_actor_loss:.3f}" if self.last_actor_loss is not None else "  ├── Actor Loss: N/A")
-            print(f"  └── Critic Loss: {self.last_critic_loss:.3f}" if self.last_critic_loss is not None else "  └── Critic Loss: N/A")
-        
-        # 4. Efficiency Analysis
-        print("\n4. Efficiency Analysis:")
-        efficiency_score = (products_completed / self.initial_products) / max(1, used_stocks)
-        efficiency_rating = "⭐⭐⭐" if efficiency_score > 0.3 else "⭐⭐" if efficiency_score > 0.2 else "⭐"
-        
-        print(f"  ├── Products per Stock: {products_completed/max(1, used_stocks):.2f}")
-        print(f"  ├── Efficiency Score: {efficiency_score:.3f}")
-        print(f"  └── Overall Rating: {efficiency_rating}")
-        
-        # 5. Warnings & Recommendations
-        print("\n5. Warnings & Recommendations:")
-        warnings = []
-        if used_stocks > products_completed/2:
-            warnings.append("⚠️ High stock usage relative to completed products")
-        if action is not None and stock_ratio < 0.4:
-            warnings.append("⚠️ Low current stock utilization")
-        if current_total_products < 3 and used_stocks > products_completed/3:
-            warnings.append("⚠️ Consider optimizing final placements")
-        
-        if warnings:
-            for warning in warnings:
-                print(f"  ├── {warning}")
-        else:
-            print("  └── No major concerns ✅")
-        
-        print("="*70)
-
+        return None
+    
     def log_episode_summary(self, steps, filled_ratio, episode_reward, observation):
         """Log detailed episode summary with performance analysis"""
         used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
@@ -842,62 +974,4 @@ class ProximalPolicyOptimization(Policy):
         
         print(f"  └── Final Grade: {grade} (Score: {avg_score:.3f})")
         print("="*70 + "\n")
-
-class EpisodeEvaluator:
-    def __init__(self):
-        self.metrics = {
-            'episode_number': 0,
-            'steps': 0,
-            'filled_ratio': 0.0,
-            'total_reward': 0.0,
-            'total_waste': 0.0,
-            'waste_per_stock': 0.0,
-            'num_stocks_used': 0
-        }
     
-    def calculate_waste(self, observation):
-        """Calculate waste for all used stocks"""
-        total_waste = 0
-        used_stocks = 0
-        
-        for stock in observation['stocks']:
-            if np.any(stock > 0):  # Stock has been used
-                stock_area = stock.shape[0] * stock.shape[1]
-                used_area = np.sum(stock > 0)
-                waste = stock_area - used_area
-                total_waste += waste
-                used_stocks += 1
-                
-        return {
-            'total_waste': total_waste,
-            'num_stocks': used_stocks,
-            'waste_per_stock': total_waste / used_stocks if used_stocks > 0 else 0
-        }
-
-    def evaluate_episode(self, observation, info, episode_data):
-        """Calculate comprehensive episode quality score"""
-        waste_metrics = self.calculate_waste(observation)
-        
-        self.metrics.update({
-            'episode_number': episode_data['episode_number'],
-            'steps': episode_data['steps'],
-            'filled_ratio': info['filled_ratio'],
-            'total_reward': episode_data['total_reward'],
-            'total_waste': waste_metrics['total_waste'],
-            'waste_per_stock': waste_metrics['waste_per_stock'],
-            'num_stocks_used': waste_metrics['num_stocks']
-        })
-        
-        return self.get_summary()
-    
-    def get_summary(self):
-        """Return formatted summary of episode performance"""
-        summary = f"\n{'='*20} Episode {self.metrics['episode_number']} Quality Report {'='*20}\n"
-        summary += f"Steps: {self.metrics['steps']}\n"
-        summary += f"Filled Ratio: {self.metrics['filled_ratio']:.3f}\n"
-        summary += f"Total Waste: {self.metrics['total_waste']}\n"
-        summary += f"Number of Stocks Used: {self.metrics['num_stocks_used']}\n"
-        summary += f"Waste per Stock: {self.metrics['waste_per_stock']:.1f}\n"
-        summary += f"Total Reward: {self.metrics['total_reward']:.2f}\n"
-        summary += "="*70
-        return summary

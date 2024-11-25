@@ -1,11 +1,43 @@
-from policy import Policy
-import numpy as np
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import numpy as np
 from collections import deque
-import os
+from policy import Policy
+import matplotlib.pyplot as plt
+
+class CuttingStockMetrics:
+    def __init__(self):
+        # Episode-level metrics
+        
+        self.episode_metrics = {
+            'filled_ratios': [],
+            'waste_ratios': [],
+            'completed_products': [],
+            'invalid_actions': [],
+            'episode_lengths': [],
+            'rewards': [],
+            'edge_utilization': [],
+            'corner_placements': [],
+            'largest_waste_area': [],
+            'product_completion_order': []
+        }
+        
+        # Best scores
+        self.best_scores = {
+            'best_filled_ratio': 0.0,
+            'best_reward': float('-inf'),
+            'best_episode': -1
+        }
+        
+        # Running averages
+        self.running_averages = {
+            'filled_ratio': deque(maxlen=10),
+            'waste_ratio': deque(maxlen=10),
+            'reward': deque(maxlen=10)
+        }
 
 class ActorNetwork(nn.Module):
     def __init__(self, state_dim, action_dim):
@@ -15,9 +47,13 @@ class ActorNetwork(nn.Module):
         self.fc2 = nn.Linear(256, 128)
         self.ln2 = nn.LayerNorm(128)
         self.fc3 = nn.Linear(128, action_dim)
+        
+        # Orthogonal initialization
+        nn.init.orthogonal_(self.fc1.weight, gain=np.sqrt(2))
+        nn.init.orthogonal_(self.fc2.weight, gain=np.sqrt(2))
+        nn.init.orthogonal_(self.fc3.weight, gain=0.01)
     
     def forward(self, state):
-        # Add batch dimension if necessary
         if state.dim() == 1:
             state = state.unsqueeze(0)
             
@@ -25,11 +61,10 @@ class ActorNetwork(nn.Module):
         x = F.relu(self.ln2(self.fc2(x)))
         logits = self.fc3(x)
         
-        # Remove batch dimension if it was added
         if logits.size(0) == 1:
             logits = logits.squeeze(0)
             
-        return F.softmax(logits, dim=-1)
+        return logits
 
 class CriticNetwork(nn.Module):
     def __init__(self, state_dim):
@@ -40,8 +75,12 @@ class CriticNetwork(nn.Module):
         self.ln2 = nn.LayerNorm(64)
         self.fc3 = nn.Linear(64, 1)
         
+        # Orthogonal initialization
+        nn.init.orthogonal_(self.fc1.weight, gain=np.sqrt(2))
+        nn.init.orthogonal_(self.fc2.weight, gain=np.sqrt(2))
+        nn.init.orthogonal_(self.fc3.weight, gain=1.0)
+        
     def forward(self, state):
-        # Add batch dimension if necessary
         if state.dim() == 1:
             state = state.unsqueeze(0)
             
@@ -49,7 +88,6 @@ class CriticNetwork(nn.Module):
         x = F.relu(self.ln2(self.fc2(x)))
         value = self.fc3(x)
         
-        # Remove batch dimension if it was added
         if value.size(0) == 1:
             value = value.squeeze(0)
             
@@ -57,484 +95,557 @@ class CriticNetwork(nn.Module):
 
 class ActorCriticPolicy(Policy):
     def __init__(self):
-        # Adjust state dimension based on feature vector size
-        max_stocks = 10
-        max_products = 10
-        stock_features = max_stocks * 3  # 3 features per stock
-        product_features = max_products * 3  # 3 features per product
-        global_features = 2  # filled_ratio and step count
-        self.state_dim = stock_features + product_features + global_features
+        super().__init__()
+        # State and action dimensions
+        self.max_stocks = 10  # Maximum number of stocks
+        self.max_products = 10  # Maximum number of products
+        self.grid_size = 5  # 5x5 grid for each stock
         
-        # Action space: stock_idx * positions (assuming 5x5 grid for each stock)
-        self.action_dim = max_stocks * 25
+        # Calculate state_dim and action_dim
+        self.state_dim = (
+            self.max_stocks * 3 +  # stock features (w, h, filled_ratio)
+            self.max_products * 3 + # product features (w, h, quantity) 
+            2  # global features (overall_filled_ratio, remaining_products)
+        )
+        self.action_dim = self.max_stocks * (self.grid_size * self.grid_size)
         
-        # Check MPS availability
-        if torch.backends.mps.is_available():
-            self.device = torch.device("mps")
-            print("Using MPS (Apple Silicon GPU)")
-        else:
-            self.device = torch.device("cpu")
-            print("MPS not available, using CPU")
-            
-        # Initialize networks and move to device
+        # Device setup
+        self.device = (
+            "mps" if torch.backends.mps.is_available() 
+            else "cuda" if torch.cuda.is_available() 
+            else "cpu"
+        )
+        print(f"Using device: {self.device}")
+        
+        # Initialize networks
         self.actor = ActorNetwork(self.state_dim, self.action_dim).to(self.device)
         self.critic = CriticNetwork(self.state_dim).to(self.device)
         
-        
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=0.1)
-        # Optimizers
-        self.critic_optimizer = optim.AdamW(
-            self.critic.parameters(),
-            lr=3e-4,
-            weight_decay=0.01
-        )
-        self.actor_optimizer = optim.AdamW(
-            self.actor.parameters(),
-            lr=3e-4,
-            weight_decay=0.01
-        )
-        
-        # Thêm learning rate scheduler
-        self.actor_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.actor_optimizer, mode='max', factor=0.5, patience=5
-        )
-        self.critic_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.critic_optimizer, mode='min', factor=0.5, patience=5
-        )
-        
-        # Other initializations
+        # Actor-Critic parameters
         self.gamma = 0.99
-        self.entropy_coef = 0.02  # Tăng từ 0.01
+        self.entropy_coef = 0.01
+        
+        # Training setup
         self.training = True
-        self.current_episode = []
+        self.steps = 0
         self.prev_filled_ratio = 0.0
         
-        # Add tracking metrics
-        self.episode_metrics = {
-            'steps': 0,
-            'total_reward': 0,
-            'filled_ratios': [],
-            'invalid_actions': 0,
-            'completed_products': 0
-        }
+        # Store trajectory information
+        self.rewards = deque()
+        self.dones = deque()
+        self.log_probs = []
+        self.values = []
+        self.entropies = []
         
-        # Thêm cache cho state normalization
-        self.state_cache = {}
-        self.cache_size = 1000
+        # Optimizers with higher learning rates than PPO
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-3)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=3e-3)
         
-        # Add path for saving models
+        # Model saving
         self.model_path = "saved_models/"
         os.makedirs(self.model_path, exist_ok=True)
+        
+        # State normalization
+        self.state_mean = torch.zeros(self.state_dim).to(self.device)
+        self.state_std = torch.ones(self.state_dim).to(self.device)
+        
+        # Learning rate schedulers
+        self.actor_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.actor_optimizer, mode='max', factor=0.5, patience=5, verbose=True)
+        self.critic_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.critic_optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+        
+        # Metrics and logging
+        self.last_actor_loss = None
+        self.last_critic_loss = None
+        self.metrics = CuttingStockMetrics()
+        self.debug_mode = True
+        self.log_file = open('actor_critic_reward_log.txt', 'w')
+        
+    def get_action(self, observation, info):
+        """Get action without performing immediate updates"""
+        state = self.preprocess_observation(observation, info)
+        state = state.to(self.device)
+        
+        with torch.set_grad_enabled(False):  # Disable gradient computation for action selection
+            logits = self.actor(state)
+            dist = torch.distributions.Categorical(logits=logits)
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            entropy = dist.entropy()
+            value = self.critic(state)
+        
+        # Convert action to environment format
+        env_action = self.convert_action(action.item(), observation)
+        
+        # If the chosen action is invalid (None), select a random valid action
+        if env_action is None:
+            env_action = self._get_random_valid_action(observation)
+        
+        # If still no valid action is found, use the No-Op action
+        if env_action is None:
+            env_action = NO_OP_ACTION  # Ensure NO_OP_ACTION is defined as shown later
+        
+        # Store current state info for later updates
+        self.log_probs.append(log_prob)
+        self.values.append(value)
+        self.entropies.append(entropy)
+        
+        return env_action
+    def _get_random_valid_action(self, observation):
+        """Get a random valid action when the policy's chosen action is invalid."""
+        for stock_idx, stock in enumerate(observation["stocks"]):
+            stock_w, stock_h = self._get_stock_size_(stock)
+            
+            for prod in observation["products"]:
+                if prod["quantity"] > 0:
+                    prod_w, prod_h = prod["size"]
+                    
+                    # Try random positions until a valid one is found
+                    for _ in range(10):  # Limit attempts to avoid infinite loop
+                        pos_x = np.random.randint(0, max(1, stock_w - prod_w + 1))
+                        pos_y = np.random.randint(0, max(1, stock_h - prod_h + 1))
+                        
+                        if self._can_place_(stock, (pos_x, pos_y), prod["size"]):
+                            return {
+                                "stock_idx": stock_idx,
+                                "size": prod["size"],
+                                "position": (pos_x, pos_y)
+                            }
+        
+        # If no valid action is found, return None to trigger No-Op
+        return None
     
-    def save_model(self, episode=None):
-        """Save the model state"""
-        try:
-            # Create filename with episode number if provided
-            filename = f"model_actor_critics_{episode}" if episode is not None else "model_final_actor_critics"
+    def update_policy(self, reward, done):
+        """Update Actor and Critic networks based on the collected trajectory"""
+        # Store the latest reward and done flag
+        self.rewards.append(reward)
+        self.dones.append(done)
+        
+        # If the episode is done, perform the update
+        if done:
+            # Compute discounted returns
+            returns = []
+            G = 0
+            for r, d in zip(reversed(self.rewards), reversed(self.dones)):
+                if d:
+                    G = 0  # Reset the return if the episode ended
+                G = r + self.gamma * G
+                returns.insert(0, G)
+            returns = torch.tensor(returns, dtype=torch.float32, device=self.device)
             
-            # Save actor and critic states
-            torch.save({
-                'actor_state_dict': self.actor.state_dict(),
-                'critic_state_dict': self.critic.state_dict(),
-                'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
-                'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
-                'actor_scheduler_state_dict': self.actor_scheduler.state_dict(),
-                'critic_scheduler_state_dict': self.critic_scheduler.state_dict(),
-                'episode': episode
-            }, os.path.join(self.model_path, f"{filename}.pt"))
+            # Normalize returns for stability
+            returns = (returns - returns.mean()) / (returns.std() + 1e-8)
             
-            print(f"Model saved successfully to {filename}.pt")
+            # Convert lists to tensors
+            log_probs = torch.stack(self.log_probs)
+            values = torch.stack(self.values).squeeze()
+            entropies = torch.stack(self.entropies)
             
-        except Exception as e:
-            print(f"Error saving model: {str(e)}")
+            # Compute advantages
+            advantages = returns - values
+            
+            # Compute actor loss
+            actor_loss = -(log_probs * advantages.detach()).mean()
+            
+            # Compute critic loss
+            critic_loss = advantages.pow(2).mean()
+            
+            # Compute entropy loss (for exploration)
+            entropy_loss = -self.entropy_coef * entropies.mean()
+            
+            # Total loss
+            total_loss = actor_loss + critic_loss + entropy_loss
+            
+            # Backpropagation
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
+            
+            # Update learning rates
+            self.actor_scheduler.step(returns.mean().item())
+            self.critic_scheduler.step(critic_loss.item())
+            
+            # Logging
+            self.last_actor_loss = actor_loss.item()
+            self.last_critic_loss = critic_loss.item()
+            
+            # Clear the trajectory
+            self.rewards.clear()
+            self.dones.clear()
+            self.log_probs.clear()
+            self.values.clear()
+            self.entropies.clear()
+
+    def _update_networks(self, reward):
+        """Perform immediate Actor-Critic update"""
+        if not self.training or self.current_state is None:
+            return
+            
+        # Convert reward to tensor and ensure it requires grad
+        reward = torch.tensor(reward, dtype=torch.float32, device=self.device)
+        
+        # Calculate TD error
+        with torch.set_grad_enabled(True):
+            next_value = self.critic(self.current_state)
+            td_error = reward + self.gamma * next_value.detach() - self.current_value
+            
+            # Actor loss
+            actor_loss = -self.current_log_prob * td_error.detach()
+            
+            # Add entropy bonus
+            dist = torch.distributions.Categorical(logits=self.actor(self.current_state))
+            entropy = dist.entropy()
+            actor_loss = actor_loss - self.entropy_coef * entropy
+            
+            # Critic loss (ensure scalar)
+            critic_loss = td_error.pow(2).mean()
+            
+            # Store losses for logging
+            self.last_actor_loss = actor_loss.item()
+            self.last_critic_loss = critic_loss.item()
+            
+            # Update actor
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+            self.actor_optimizer.step()
+            
+            # Update critic
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+            self.critic_optimizer.step()
+            
+            # Update learning rates
+            self.actor_scheduler.step(reward.item())
+            self.critic_scheduler.step(critic_loss.item())
+
+    def calculate_reward(self, action, observation, info):
+        """Calculate comprehensive reward"""
+        if action is None:
+            return -2.0
+            
+        reward = 0
+        current_filled_ratio = info.get('filled_ratio', 0)
+        filled_ratio_change = current_filled_ratio - self.prev_filled_ratio
+        
+        # 1. Filled Ratio (30%)
+        filled_ratio_reward = filled_ratio_change * 15.0
+        reward += filled_ratio_reward
+        
+        # 2. Pattern Quality (30%)
+        pattern_eval = self.evaluate_cutting_pattern(observation, action, info)
+        if pattern_eval:
+            reward += pattern_eval['edge_contact'] * 1.0
+            reward += pattern_eval['is_corner'] * 2.0
+            reward += pattern_eval['position_quality'] * 0.5
+        
+        # 3. Stock Usage Penalty
+        reward += self.calculate_stock_penalty(observation)
+        
+        # 4. Completion Bonus
+        if self._is_product_completed(observation, action):
+            reward += 3.0
+            remaining_products = sum(prod['quantity'] for prod in observation['products'])
+            if remaining_products <= 3:
+                reward += 2.0
+        
+        self.prev_filled_ratio = current_filled_ratio
+        return reward
+
+    def _log_step_info(self, action, observation, info, reward):
+        """Log detailed step information"""
+        print("\n" + "="*30 + f" Step {self.steps} Summary " + "="*30)
+        print("\n1. Action Details:")
+        print(f"  Stock Index: {action['stock_idx']}")
+        print(f"  Position: {action['position']}")
+        print(f"  Product Size: {action['size']}")
+        print(f"  Filled Ratio: {info['filled_ratio']:.3f}")
+        print(f"  Reward: {reward:.3f}")
+        
+        print("\n2. Products Remaining:")
+        for i, prod in enumerate(observation['products']):
+            if prod['quantity'] > 0:
+                print(f"  Product {i}: {prod['size']} x {prod['quantity']}")
+        
+        print("\n3. Training Metrics:")
+        actor_loss_str = f"{self.last_actor_loss:.6f}" if self.last_actor_loss is not None else "N/A"
+        critic_loss_str = f"{self.last_critic_loss:.6f}" if self.last_critic_loss is not None else "N/A"
+        print(f"  Actor Loss: {actor_loss_str}")
+        print(f"  Critic Loss: {critic_loss_str}")
+        print("="*80 + "\n")
+
+    def save_model(self, filename):
+        if not filename.endswith('.pt'):
+            filename += '.pt'
+        torch.save({
+            'actor_state_dict': self.actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+            'state_mean': self.state_mean,
+            'state_std': self.state_std,
+        }, os.path.join(self.model_path, filename))
     
     def load_model(self, filename):
-        """Load the model state"""
         try:
             checkpoint = torch.load(os.path.join(self.model_path, filename))
-            
             self.actor.load_state_dict(checkpoint['actor_state_dict'])
             self.critic.load_state_dict(checkpoint['critic_state_dict'])
             self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
             self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-            self.actor_scheduler.load_state_dict(checkpoint['actor_scheduler_state_dict'])
-            self.critic_scheduler.load_state_dict(checkpoint['critic_scheduler_state_dict'])
-            
-            print(f"Model loaded successfully from {filename}")
-            return checkpoint.get('episode', None)
-            
-        except Exception as e:
-            print(f"Error loading model: {str(e)}")
-            return None
+            self.state_mean = checkpoint['state_mean']
+            self.state_std = checkpoint['state_std']
+            return True
+        except:
+            return False
 
-    def _normalize_state(self, state):
-        """Normalize state using running statistics"""
-        if self.state_mean is None:
-            self.state_mean = torch.zeros_like(state)
-            self.state_std = torch.ones_like(state)
+    def plot_training_progress(self):
+        """Plot training metrics"""
+        plt.figure(figsize=(15, 10))
         
-        # Update running statistics
-        if self.training:
-            with torch.no_grad():
-                self.state_mean = 0.99 * self.state_mean + 0.01 * state
-                self.state_std = 0.99 * self.state_std + 0.01 * (state - self.state_mean).pow(2)
+        # Plot rewards
+        plt.subplot(221)
+        plt.plot(self.metrics.episode_metrics['rewards'])
+        plt.title('Episode Rewards')
+        plt.xlabel('Episode')
+        plt.ylabel('Reward')
         
-        # Normalize state
-        return (state - self.state_mean) / (torch.sqrt(self.state_std) + 1e-8)
+        # Plot filled ratios
+        plt.subplot(222)
+        plt.plot(self.metrics.episode_metrics['filled_ratios'])
+        plt.title('Filled Ratios')
+        plt.xlabel('Episode')
+        plt.ylabel('Ratio')
+        
+        # Plot edge utilization
+        plt.subplot(223)
+        plt.plot(self.metrics.episode_metrics['edge_utilization'])
+        plt.title('Edge Utilization')
+        plt.xlabel('Episode')
+        plt.ylabel('Count')
+        
+        # Plot corner placements
+        plt.subplot(224)
+        plt.plot(self.metrics.episode_metrics['corner_placements'])
+        plt.title('Corner Placements')
+        plt.xlabel('Episode')
+        plt.ylabel('Count')
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.model_path, 'training_progress.png'))
+        plt.close()
+    def normalize_state(self, state):
+        """Normalize state using running mean and std"""
+        state = torch.FloatTensor(state).to(self.device)
+        return (state - self.state_mean) / (self.state_std + 1e-8)
 
-    def get_action(self, observation, info):
-        state = self._preprocess_state(observation, info)
-        state = state.to(self.device)  # Move to MPS
-        
-        with torch.no_grad():
-            action_probs = self.actor(state)
-            action_probs = F.softmax(action_probs, dim=-1)
-            # Move to CPU for sampling
-            action_probs = action_probs.cpu()
-            action = torch.multinomial(action_probs, 1).item()
-        
-        # Convert action to placement parameters
-        max_stocks = len(observation["stocks"])
-        stock_idx = min(action // 25, max_stocks - 1)
-        position = action % 25
-        pos_x = position // 5
-        pos_y = position % 5
-        
-        # Find valid placement
-        valid_action = None
-        for prod in observation["products"]:
-            if prod["quantity"] > 0:
-                stock = observation["stocks"][stock_idx]
-                stock_w, stock_h = self._get_stock_size_(stock)
-                
-                # Scale position to actual stock size
-                scaled_x = min(int(pos_x * stock_w / 5), stock_w - prod["size"][0])
-                scaled_y = min(int(pos_y * stock_h / 5), stock_h - prod["size"][1])
-                
-                if self._can_place_(stock, (scaled_x, scaled_y), prod["size"]):
-                    valid_action = {
-                        "stock_idx": stock_idx,
-                        "size": prod["size"],
-                        "position": (scaled_x, scaled_y)
-                    }
-                    break
-        
-        # If no valid action found, use fallback strategy
-        if valid_action is None:
-            valid_action = self._get_random_valid_action(observation)
-        
-        # Ensure we always return a valid action
-        if valid_action is None:
-            # Last resort: return first possible action
-            for stock_idx, stock in enumerate(observation["stocks"]):
-                for prod in observation["products"]:
-                    if prod["quantity"] > 0:
-                        valid_action = {
-                            "stock_idx": stock_idx,
-                            "size": prod["size"],
-                            "position": (0, 0)
-                        }
-                        break
-                if valid_action is not None:
-                    break
-        
-        # Calculate immediate reward
-        immediate_reward = self.calculate_reward(valid_action, observation, info)
-        
-        # Update metrics and logging
-        self.episode_metrics['steps'] += 1
-        self.episode_metrics['total_reward'] += immediate_reward
-        self.episode_metrics['filled_ratios'].append(info.get('filled_ratio', 0))
-        
-        # Print progress every 100 steps
-        if self.episode_metrics['steps'] % 100 == 0 or self.episode_metrics['steps'] == 1:
-            print("\n" + "="*30 + f" Step {self.episode_metrics['steps']} Summary " + "="*30)
-            print("\n1. Action Details:")
-            print(f"  Stock Index: {valid_action['stock_idx']}")
-            print(f"  Position: {valid_action['position']}")
-            print(f"  Product Size: {valid_action['size']}")
-            print(f"  Filled Ratio: {info['filled_ratio']:.3f}")
-            print(f"  Reward: {immediate_reward:.3f}")
-            
-            print("\n2. Products Remaining:")
-            for i, prod in enumerate(observation['products']):
-                if prod['quantity'] > 0:
-                    print(f"  Product {i}: {prod['size']} x {prod['quantity']}")
-            
-            if self.training:
-                print("\n3. Training Metrics:")
-                print(f"  Actor Loss: {getattr(self, 'last_actor_loss', 'N/A')}")
-                print(f"  Critic Loss: {getattr(self, 'last_critic_loss', 'N/A')}")
-            print("="*80 + "\n")
-        
-        if self.training:
-            self.current_episode.append({
-                'state': state.cpu(),
-                'action': action,
-                'immediate_reward': float(immediate_reward)
-            })
-        
-        self.prev_filled_ratio = info.get('filled_ratio', 0)
-        return valid_action
+    def update_state_normalizer(self, state):
+        """Update running mean and std of states"""
+        state = torch.FloatTensor(state).to(self.device)
+        self.state_mean = 0.99 * self.state_mean + 0.01 * state.mean()
+        self.state_std = 0.99 * self.state_std + 0.01 * state.std()
 
-    def calculate_reward(self, valid_action, observation, info):
-        """Calculate comprehensive reward with improved components"""
-        if valid_action is None:
-            return -1.0  # Tăng penalty cho invalid action
-            
-        reward = 0
-        current_filled_ratio = info.get('filled_ratio', 0)
-        
-        # 1. Filled Ratio Component (30% trọng số)
-        filled_ratio_change = current_filled_ratio - self.prev_filled_ratio
-        filled_ratio_reward = filled_ratio_change * 20.0  # Tăng từ 10
-        reward += filled_ratio_reward
-        
-        # 2. Placement Quality Component (25% trọng số)
-        stock = observation["stocks"][valid_action["stock_idx"]]
-        stock_w, stock_h = self._get_stock_size_(stock)
-        pos_x, pos_y = valid_action["position"]
-        size_w, size_h = valid_action["size"]
-        
-        # 2.1 Edge Utilization (ưu tiên đặt sát cạnh)
-        edge_bonus = 0
-        if pos_x == 0 or pos_x + size_w == stock_w:
-            edge_bonus += 0.5  # Tăng từ 0.2
-        if pos_y == 0 or pos_y + size_h == stock_h:
-            edge_bonus += 0.5
-        reward += edge_bonus
-        
-        # 2.2 Corner Bonus (ưu tiên đặt góc)
-        if (pos_x == 0 or pos_x + size_w == stock_w) and \
-           (pos_y == 0 or pos_y + size_h == stock_h):
-            reward += 1.0  # Tăng từ 0.3
-        
-        # 3. Area Efficiency Component (20% trọng số)
-        product_area = size_w * size_h
-        stock_area = stock_w * stock_h
-        area_efficiency = product_area / stock_area
-        area_reward = area_efficiency * 2.0  # Tăng từ 0.5
-        reward += area_reward
-        
-        # 4. Completion Bonus (15% trọng số)
-        for prod in observation["products"]:
-            if prod["quantity"] == 1 and np.array_equal(prod["size"], valid_action["size"]):
-                reward += 2.0  # Tăng từ 0.5 - khuyến khích hoàn thành sản phẩm
-        
-        # 5. Strategic Placement (10% trọng số)
-        # 5.1 Giảm penalty cho việc đặt ở giữa
-        center_x = abs(pos_x + size_w/2 - stock_w/2) / stock_w
-        center_y = abs(pos_y + size_h/2 - stock_h/2) / stock_h
-        center_penalty = -(center_x + center_y) * 0.1  # Giảm từ 0.2
-        reward += center_penalty
-        
-        # 5.2 Bonus cho việc đặt các sản phẩm lớn trước
-        relative_size = (size_w * size_h) / (stock_w * stock_h)
-        if relative_size > 0.3:  # Nếu sản phẩm chiếm >30% diện tích
-            reward += 0.5
-        
-        # Add diversity bonus
-        
-        # Debug logging
-        # print(f"\nReward Breakdown:")
-        # print(f"1. Filled Ratio Change: {filled_ratio_reward:.3f}")
-        # print(f"2. Edge/Corner Bonus: {edge_bonus:.3f}")
-        # print(f"3. Area Efficiency: {area_reward:.3f}")
-        # print(f"4. Center Penalty: {center_penalty:.3f}")
-        # print(f"5. Size Bonus: {0.5 if relative_size > 0.3 else 0:.3f}")
-        # print(f"Total Reward: {reward:.3f}")
-        
-        return reward
-
-    def update_policy(self, reward, done):
-        if not self.training or not self.current_episode:
-            return
-        
-        # Debug print
-        # print(f"\nUpdating policy with {len(self.current_episode)} transitions")
-        
-        try:
-            # Move batch data to MPS
-            states = torch.stack([t['state'] for t in self.current_episode]).to(self.device)
-            actions = torch.tensor([t['action'] for t in self.current_episode]).to(self.device)
-            rewards = torch.tensor([t['immediate_reward'] for t in self.current_episode], 
-                                 dtype=torch.float32).to(self.device)
-            
-            # Ensure tensors have correct shape
-            if states.dim() == 1:
-                states = states.unsqueeze(0)
-            if actions.dim() == 0:
-                actions = actions.unsqueeze(0)
-            if rewards.dim() == 0:
-                rewards = rewards.unsqueeze(0)
-                
-            # print(f"Tensor shapes - States: {states.shape}, Actions: {actions.shape}, Rewards: {rewards.shape}")
-            
-            # Process batch
-            with torch.no_grad():
-                values = self.critic(states).squeeze()
-                if values.dim() == 0:
-                    values = values.unsqueeze(0)
-                
-                next_values = torch.zeros_like(values)
-                if len(values) > 1:  # Only set next_values if we have more than one value
-                    next_values[:-1] = values[1:]
-                
-                # Calculate advantages
-                advantages = torch.zeros_like(rewards)
-                gae = 0
-                for t in reversed(range(len(rewards))):
-                    delta = rewards[t] + self.gamma * next_values[t] - values[t]
-                    gae = delta + self.gamma * 0.95 * gae
-                    advantages[t] = gae
-                
-                returns = advantages + values
-            
-            # Normalize advantages
-            if len(advantages) > 1:
-                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-            
-            # Update actor
-            action_probs = self.actor(states)
-            dist = torch.distributions.Categorical(F.softmax(action_probs, dim=-1))
-            log_probs = dist.log_prob(actions)
-            entropy = dist.entropy().mean()
-            
-            actor_loss = -(log_probs * advantages).mean() - self.entropy_coef * entropy
-            
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor_optimizer.step()
-            
-            # Update critic
-            value_pred = self.critic(states).squeeze()
-            if value_pred.dim() == 0:
-                value_pred = value_pred.unsqueeze(0)
-            if returns.dim() == 0:
-                returns = returns.unsqueeze(0)
-            
-            critic_loss = F.mse_loss(value_pred, returns)
-
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic_optimizer.step()
-
-            print(f"Losses - Actor: {actor_loss.item():.3f}, Critic: {critic_loss.item():.3f}")
-
-            # Store losses for logging
-            self.last_actor_loss = actor_loss.item()
-            self.last_critic_loss = critic_loss.item()
-
-            # Print training update
-            # print("\n" + "="*30 + " Training Update " + "="*30)
-            # print(f"Batch Statistics:")
-            # print(f"1. Batch Size: {len(self.current_episode)}")
-            # print(f"2. Average Reward: {rewards.mean():.3f}")
-            # print(f"3. Reward Range: [{rewards.min():.3f}, {rewards.max():.3f}]")
-            # print(f"4. Actor Loss: {self.last_actor_loss:.3f}")
-            # print(f"5. Critic Loss: {self.last_critic_loss:.3f}")
-        except Exception as e:
-            print(f"Error in update_policy: {str(e)}")
-            print(f"Current episode length: {len(self.current_episode)}")
-            print(f"Rewards: {rewards}")
-            print(f"Values shape: {values.shape if 'values' in locals() else 'Not created'}")
-            raise e
-
-    def _preprocess_state(self, observation, info):
-        """Convert observation to state tensor"""
-        stocks = observation["stocks"]
-        products = observation["products"]
-        
-        # Extract features from stocks
+    def preprocess_observation(self, observation, info):
+        """Convert observation to state tensor với padding cố định"""
+        # Stock features
         stock_features = []
-        for stock in stocks:
-            stock_w, stock_h = self._get_stock_size_(stock)
-            used_space = np.sum(stock != -1)
-            total_space = stock_w * stock_h
-            stock_features.extend([
-                stock_w / 10.0,  # Normalize size
-                stock_h / 10.0,
-                used_space / total_space  # Used space ratio
-            ])
-                
-        # Extract features from products
-        prod_features = []
-        for prod in products:
-            if prod["quantity"] > 0:  # Only consider available products
-                prod_features.extend([
-                    prod["size"][0] / 10.0,  # Normalize size
-                    prod["size"][1] / 10.0,
-                    min(prod["quantity"], 10) / 10.0  # Cap and normalize quantity
-                ])
-        
-        # Ensure fixed length by padding or truncating
-        max_stocks = 10  # Maximum number of stocks to consider
-        max_products = 10  # Maximum number of products to consider
-        
-        # Pad or truncate stock features
-        stock_features = stock_features[:max_stocks*3]  # 3 features per stock
-        if len(stock_features) < max_stocks*3:
-            stock_features.extend([0] * (max_stocks*3 - len(stock_features)))
-        
-        # Pad or truncate product features
-        prod_features = prod_features[:max_products*3]  # 3 features per product
-        if len(prod_features) < max_products*3:
-            prod_features.extend([0] * (max_products*3 - len(prod_features)))
-        
-        # Add global features
+        for i in range(self.max_stocks):
+            if i < len(observation['stocks']):
+                stock = observation['stocks'][i]
+                stock_w, stock_h = self._get_stock_size_(stock)
+                filled_ratio = np.sum(stock > 0) / (stock_w * stock_h)
+                stock_features.extend([stock_w, stock_h, filled_ratio])
+            else:
+                stock_features.extend([0, 0, 0])  # Padding
+
+        # Product features
+        product_features = []
+        for i in range(self.max_products):
+            if i < len(observation['products']):
+                product = observation['products'][i]
+                w, h = product['size']
+                qty = product['quantity']
+                product_features.extend([w, h, qty])
+            else:
+                product_features.extend([0, 0, 0])  # Padding
+
+        # Global features
         global_features = [
             info.get('filled_ratio', 0),
-            len(self.current_episode) / 100.0  # Normalized step count
+            len([p for p in observation['products'] if p['quantity'] > 0])
         ]
-        
+
         # Combine all features
-        state = np.array(stock_features + prod_features + global_features, dtype=np.float32)
+        state = np.array(stock_features + product_features + global_features)
         
-        return torch.FloatTensor(state).to(self.device)
+        # Normalize state
+        if self.training:
+            self.update_state_normalizer(state)
+        return self.normalize_state(state)
+
+    def evaluate_cutting_pattern(self, observation, action, info):
+        """Evaluate quality of cutting pattern"""
+        if action is None:
+            return None
+        
+        stock = observation['stocks'][action['stock_idx']]
+        stock_w, stock_h = self._get_stock_size_(stock)
+        pos_x, pos_y = action['position']
+        size_w, size_h = action['size']
+        
+        # Calculate metrics
+        edge_contact = 0
+        if pos_x == 0 or pos_x + size_w == stock_w:
+            edge_contact += 1
+        if pos_y == 0 or pos_y + size_h == stock_h:
+            edge_contact += 1
+        
+        is_corner = (pos_x == 0 or pos_x + size_w == stock_w) and \
+                   (pos_y == 0 or pos_y + size_h == stock_h)
+        
+        self.metrics.episode_metrics['edge_utilization'].append(edge_contact)
+        self.metrics.episode_metrics['corner_placements'].append(int(is_corner))
+        
+        return {
+            'edge_contact': edge_contact,
+            'is_corner': is_corner,
+            'piece_area': size_w * size_h,
+            'position_quality': pos_x == 0 or pos_y == 0
+        }
+
+    def calculate_stock_penalty(self, observation):
+        """Calculate penalty for using multiple stocks"""
+        used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock > 0))
+        return -0.5 * used_stocks
+
+    def _is_product_completed(self, observation, action):
+        """Check if action completes a product"""
+        for product in observation['products']:
+            if product['quantity'] == 1 and np.array_equal(product['size'], action['size']):
+                return True
+        return False
+
+    def _evaluate_pattern_quality(self, stock, pos_x, pos_y, size_w, size_h):
+        """Evaluate the quality of placement pattern"""
+        pattern_score = 0
+        
+        # Edge alignment bonus
+        if pos_x == 0 or pos_y == 0:
+            pattern_score += 0.5
+            
+        # Corner placement bonus
+        if (pos_x == 0 and pos_y == 0) or \
+           (pos_x == 0 and pos_y + size_h == stock.shape[0]) or \
+           (pos_x + size_w == stock.shape[1] and pos_y == 0) or \
+           (pos_x + size_w == stock.shape[1] and pos_y + size_h == stock.shape[0]):
+            pattern_score += 1.0
+            
+        return pattern_score
 
     def _get_stock_size_(self, stock):
-        """Get width and height of a stock"""
-        stock_w = np.sum(np.any(stock != -2, axis=0))
-        stock_h = np.sum(np.any(stock != -2, axis=1))
-        return stock_w, stock_h
+        """Get width and height of stock"""
+        return stock.shape[1], stock.shape[0]
 
-    def _can_place_(self, stock, position, size):
-        """Check if we can place a product at the given position"""
-        pos_x, pos_y = position
-        prod_w, prod_h = size
+    def convert_action(self, action_idx, observation):
+        """Convert network output to environment action"""
+        stock_idx = action_idx // (self.grid_size * self.grid_size)
+        position_idx = action_idx % (self.grid_size * self.grid_size)
         
-        if pos_x < 0 or pos_y < 0 or pos_x + prod_w > stock.shape[1] or pos_y + prod_h > stock.shape[0]:
-            return False
+        if stock_idx >= len(observation['stocks']):
+            return None
             
-        # Check if all cells are available (-1)
-        return np.all(stock[pos_y:pos_y+prod_h, pos_x:pos_x+prod_w] == -1)
-
-    def _get_random_valid_action(self, observation):
-        """Fallback method for random valid action"""
-        for prod in observation["products"]:
-            if prod["quantity"] <= 0:
-                continue
-                
-            for stock_idx, stock in enumerate(observation["stocks"]):
-                stock_w, stock_h = self._get_stock_size_(stock)
-                
-                if stock_w < prod["size"][0] or stock_h < prod["size"][1]:
-                    continue
-                    
-                for _ in range(10):  # Limit attempts
-                    pos_x = np.random.randint(0, stock_w - prod["size"][0] + 1)
-                    pos_y = np.random.randint(0, stock_h - prod["size"][1] + 1)
-                    
-                    if self._can_place_(stock, (pos_x, pos_y), prod["size"]):
-                        return {
-                            "stock_idx": stock_idx,
-                            "size": prod["size"],
-                            "position": (pos_x, pos_y)
-                        }
+        stock = observation['stocks'][stock_idx]
+        stock_w, stock_h = self._get_stock_size_(stock)
         
-        # If still no valid action found, return a default action
-        return {
-            "stock_idx": 0,
-            "size": [1, 1],
-            "position": (0, 0)
+        # Convert position index to x,y coordinates
+        pos_x = (position_idx % self.grid_size) * (stock_w // self.grid_size)
+        pos_y = (position_idx // self.grid_size) * (stock_h // self.grid_size)
+        
+        # Find best fitting product
+        for prod in observation['products']:
+            if prod['quantity'] > 0:
+                size_w, size_h = prod['size']
+                if (pos_x + size_w <= stock_w and 
+                    pos_y + size_h <= stock_h and 
+                    self._is_position_valid(stock, pos_x, pos_y, size_w, size_h)):
+                    return {
+                        "stock_idx": stock_idx,
+                        "size": prod['size'],
+                        "position": (pos_x, pos_y)
+                    }
+        return None
+
+    def _is_position_valid(self, stock, pos_x, pos_y, size_w, size_h):
+        """Check if position is valid for placement"""
+        if pos_x + size_w > stock.shape[1] or pos_y + size_h > stock.shape[0]:
+            return False
+        
+        # Check if area is empty
+        return not np.any(stock[pos_y:pos_y+size_h, pos_x:pos_x+size_w] > 0)
+
+class EpisodeEvaluator:
+    def __init__(self):
+        self.metrics = {
+            'episode_number': 0,
+            'steps': 0,
+            'filled_ratio': 0.0,
+            'total_reward': 0.0,
+            'total_waste': 0.0,
+            'waste_per_stock': 0.0,
+            'num_stocks_used': 0
         }
+    
+    def calculate_waste(self, observation):
+        """Calculate waste for all used stocks"""
+        total_waste = 0
+        used_stocks = 0
+        
+        for stock in observation['stocks']:
+            if np.any(stock > 0):  # Stock has been used
+                stock_area = stock.shape[0] * stock.shape[1]
+                used_area = np.sum(stock > 0)
+                waste = stock_area - used_area
+                total_waste += waste
+                used_stocks += 1
+                
+        return {
+            'total_waste': total_waste,
+            'num_stocks': used_stocks,
+            'waste_per_stock': total_waste / used_stocks if used_stocks > 0 else 0
+        }
+
+    def evaluate_episode(self, observation, info, episode_data):
+        """Calculate comprehensive episode quality score"""
+        waste_metrics = self.calculate_waste(observation)
+        
+        self.metrics.update({
+            'episode_number': episode_data['episode_number'],
+            'steps': episode_data['steps'],
+            'filled_ratio': info['filled_ratio'],
+            'total_reward': episode_data['total_reward'],
+            'total_waste': waste_metrics['total_waste'],
+            'waste_per_stock': waste_metrics['waste_per_stock'],
+            'num_stocks_used': waste_metrics['num_stocks']
+        })
+        
+        return self.get_summary()
+    
+    def get_summary(self):
+        """Return formatted summary of episode performance"""
+        summary = f"\n{'='*20} Episode {self.metrics['episode_number']} Quality Report {'='*20}\n"
+        summary += f"Steps: {self.metrics['steps']}\n"
+        summary += f"Filled Ratio: {self.metrics['filled_ratio']:.3f}\n"
+        summary += f"Total Waste: {self.metrics['total_waste']}\n"
+        summary += f"Number of Stocks Used: {self.metrics['num_stocks_used']}\n"
+        summary += f"Waste per Stock: {self.metrics['waste_per_stock']:.1f}\n"
+        summary += f"Total Reward: {self.metrics['total_reward']:.2f}\n"
+        summary += "="*70
+        return summary
+
+    
