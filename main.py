@@ -590,7 +590,7 @@ def test_policy(env, policy, num_episodes=1):
     policy.plot_training_progress()
 if __name__ == "__main__":
     # Constants
-    NUM_EPISODES = 10
+    NUM_EPISODES = 1
     LOGGING_INTERVAL = 300  # Log every 300 steps
     SAVE_INTERVAL = 1000000    # Save model every 100 steps
 
@@ -601,7 +601,7 @@ if __name__ == "__main__":
     )
     
     # Choose which policy to run
-    POLICY_TYPE = "a2c"  # Options: "actor_critic", "ppo", "dqn", "random", "greedy"
+    POLICY_TYPE = "ppo"  # Options: "actor_critic", "ppo", "dqn", "random", "greedy"
     
     if POLICY_TYPE == "a2c":
         policy = AdvantageActorCritic()

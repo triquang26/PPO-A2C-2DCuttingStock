@@ -132,29 +132,27 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, state_dim):
         super().__init__()
-        self.fc1 = nn.Linear(state_dim, 256)
-        self.ln1 = nn.LayerNorm(256)
-        self.fc2 = nn.Linear(256, 64)
-        self.ln2 = nn.LayerNorm(64)
-        self.fc3 = nn.Linear(64, 1)
+        self.network = nn.Sequential(
+            nn.Linear(state_dim, 128),  # Giảm từ 256 xuống 128
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Dropout(0.1),  # Thêm dropout để giảm overfitting
+            nn.Linear(128, 32),   # Giảm từ 64 xuống 32
+            nn.LayerNorm(32),
+            nn.ReLU(),
+            nn.Linear(32, 1)
+        )
         
-        # Orthogonal initialization
-        nn.init.orthogonal_(self.fc1.weight, gain=np.sqrt(2))
-        nn.init.orthogonal_(self.fc2.weight, gain=np.sqrt(2))
-        nn.init.orthogonal_(self.fc3.weight, gain=1.0)
-        
+        # Initialize weights với gain nhỏ hơn
+        for layer in self.network:
+            if isinstance(layer, nn.Linear):
+                nn.init.orthogonal_(layer.weight, gain=0.01)  # Giảm gain xuống 0.01
+                nn.init.constant_(layer.bias, 0)
+    
     def forward(self, state):
         if state.dim() == 1:
             state = state.unsqueeze(0)
-            
-        x = F.relu(self.ln1(self.fc1(state)))
-        x = F.relu(self.ln2(self.fc2(x)))
-        value = self.fc3(x)
-        
-        if value.size(0) == 1:
-            value = value.squeeze(0)
-            
-        return value
+        return self.network(state)
 
 # ===========================
 # Memory for A2C
@@ -568,9 +566,13 @@ class AdvantageActorCritic(Policy):
         # Calculate actor loss (policy gradient)
         actor_loss = -(new_log_probs * advantages).mean()
         
-        # Calculate critic loss (value function loss)
+        # Normalize returns before computing loss
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        
+        # Critic prediction
         value_pred = self.critic(states).squeeze(-1)
-        returns = returns.unsqueeze(1)  # Change shape from [128] to [128, 1]
+        
+        # Normalized critic loss
         critic_loss = F.mse_loss(value_pred, returns)
         
         # Store the losses

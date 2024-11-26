@@ -68,29 +68,27 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, state_dim):
         super().__init__()
-        self.fc1 = nn.Linear(state_dim, 256)
-        self.ln1 = nn.LayerNorm(256)
-        self.fc2 = nn.Linear(256, 64)
-        self.ln2 = nn.LayerNorm(64)
-        self.fc3 = nn.Linear(64, 1)
+        self.network = nn.Sequential(
+            nn.Linear(state_dim, 128),  # Giảm từ 256 xuống 128
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Dropout(0.1),  # Thêm dropout
+            nn.Linear(128, 32),   # Giảm từ 64 xuống 32
+            nn.LayerNorm(32),
+            nn.ReLU(),
+            nn.Linear(32, 1)
+        )
         
-        # Orthogonal initialization
-        nn.init.orthogonal_(self.fc1.weight, gain=np.sqrt(2))
-        nn.init.orthogonal_(self.fc2.weight, gain=np.sqrt(2))
-        nn.init.orthogonal_(self.fc3.weight, gain=1.0)
-        
+        # Initialize weights với gain nhỏ hơn
+        for layer in self.network:
+            if isinstance(layer, nn.Linear):
+                nn.init.orthogonal_(layer.weight, gain=0.01)
+                nn.init.constant_(layer.bias, 0)
+    
     def forward(self, state):
         if state.dim() == 1:
             state = state.unsqueeze(0)
-            
-        x = F.relu(self.ln1(self.fc1(state)))
-        x = F.relu(self.ln2(self.fc2(x)))
-        value = self.fc3(x)
-        
-        if value.size(0) == 1:
-            value = value.squeeze(0)
-            
-        return value
+        return self.network(state)
 
 class PPOMemory:
     def __init__(self):
@@ -407,7 +405,8 @@ class ProximalPolicyOptimization(Policy):
         advantages = self.compute_gae(rewards, old_values, dones)
         returns = advantages + old_values
         
-        # Normalize advantages
+        # Normalize returns và advantages mạnh hơn
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         print(f"\nUpdating networks with {len(self.memory.states)} samples...")
@@ -420,34 +419,40 @@ class ProximalPolicyOptimization(Policy):
             new_log_probs = dist.log_prob(actions)
             entropy = dist.entropy().mean()
             
-            # Calculate policy ratio and surrogate objectives
+            # Calculate policy ratio and clipped surrogate objective
             ratio = torch.exp(new_log_probs - old_log_probs)
             surr1 = ratio * advantages
             surr2 = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * advantages
             actor_loss = -torch.min(surr1, surr2).mean()
             
-            # Value function loss
+            # Value function loss với L2 regularization
             value_pred = self.critic(states)
+            l2_reg = 0.01
+            critic_reg_loss = 0
+            for param in self.critic.parameters():
+                critic_reg_loss += torch.sum(param ** 2)
+                
             value_clipped = old_values + torch.clamp(
                 value_pred - old_values, -self.clip_epsilon, self.clip_epsilon
             )
             value_loss_1 = (value_pred - returns).pow(2)
             value_loss_2 = (value_clipped - returns).pow(2)
-            critic_loss = 0.5 * torch.max(value_loss_1, value_loss_2).mean()
+            critic_loss = 0.25 * torch.max(value_loss_1, value_loss_2).mean() + l2_reg * critic_reg_loss
             
             # Store the losses
             self.last_actor_loss = actor_loss.item()
             self.last_critic_loss = critic_loss.item()
             
-            # Total loss
-            total_loss = actor_loss + critic_loss - self.entropy_coef * entropy
+            # Total loss với entropy bonus nhỏ hơn
+            total_loss = actor_loss + critic_loss - 0.01 * entropy  # Giảm entropy coefficient
             print(f"Losses - Actor: {actor_loss.item():.3f}, Critic: {critic_loss.item():.3f}")
-            # Update networks
+            
+            # Update với gradient clipping mạnh hơn
             self.actor_optimizer.zero_grad()
             self.critic_optimizer.zero_grad()
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
-            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.1)  # Giảm max norm
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.1)
             self.actor_optimizer.step()
             self.critic_optimizer.step()
         
