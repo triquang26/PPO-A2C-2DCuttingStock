@@ -153,24 +153,26 @@ class ProximalPolicyOptimization(Policy):
         self.model_path = "saved_models/"
         os.makedirs(self.model_path, exist_ok=True)
         
-        # Add tracking for products
-        self.initial_products = None
-        self.prev_total_products = None
-        
-        # Debug mode flag
-        self.debug_mode = True
-        
         # Initialize metrics
         self.metrics = CuttingStockMetrics()
         self.log_file = open('ppo_reward_log.txt', 'w')
         
+        # Initialize product tracking
+        self.initial_products = None
+        self.prev_total_products = None
+        
+        # Initialize reward tracking
         self.last_reward = 0
-        self.reward_history = deque(maxlen=10)  # Lưu 10 rewards gần nhất
+        self.reward_history = deque(maxlen=10)
 
     def initialize_networks(self, observation):
         """Initialize networks after getting first observation"""
         if self.max_products is None:
             self.max_products = len(observation["products"])
+            # Initialize initial_products count
+            self.initial_products = sum(prod["quantity"] for prod in observation["products"])
+            self.prev_total_products = self.initial_products
+            
             stock_features = 100 * 3
             product_features = self.max_products * 3
             global_features = 2
@@ -244,29 +246,44 @@ class ProximalPolicyOptimization(Policy):
         if self.max_products is None:
             self.initialize_networks(observation)
         
-        # Initialize initial_products if not set
-        if self.initial_products is None:
-            self.initial_products = sum(prod["quantity"] for prod in observation["products"])
-            self.prev_total_products = self.initial_products
+        remaining_products = sum(prod["quantity"] for prod in observation["products"])
         
-        state = self.preprocess_observation(observation, info)
-        state = self.normalize_state(state).unsqueeze(0)
+        # Enhanced early-stage strategy
+        if self.steps < 1000 or remaining_products > 0.8 * self.initial_products:
+            # Use structured placement more frequently early on
+            if np.random.random() < 0.8:  # 80% chance
+                placement_action = self._get_structured_placement(observation)
+                if placement_action is not None:
+                    return placement_action
         
-        with torch.no_grad():
-            logits = self.actor(state)
-            
-            # Increase exploration
-            temperature = max(1.5 - (self.steps / 15000), 0.7)
-            logits = logits / temperature
-            
-            dist = torch.distributions.Categorical(logits=logits)
-            action = dist.sample()
-            
-            if self.training:
-                log_prob = dist.log_prob(action)
-                value = self.critic(state)
-                self.memory.add(state.cpu(), action.item(), 0, value.item(), log_prob.item(), False)
-    
+        # Modified largest-first strategy
+        largest_product = self._get_largest_product(observation)
+        if largest_product:
+            best_stock_idx = self.find_best_fitting_stock(observation, largest_product["size"])
+            if best_stock_idx is not None:
+                state = self.preprocess_observation(observation, info)
+                state = self.normalize_state(state).unsqueeze(0)
+                
+                with torch.no_grad():
+                    logits = self.actor(state).squeeze(0)
+                    
+                    # Stronger bias towards best stock during early training
+                    boost_factor = max(3.0 - (self.steps / 10000), 1.0)
+                    stock_actions = torch.arange(25, device=self.device) + (best_stock_idx * 25)
+                    logits[stock_actions] += boost_factor
+                    
+                    # Adaptive temperature
+                    temperature = max(2.0 - (self.steps / 10000), 0.5)
+                    logits = logits / temperature
+                    
+                    dist = torch.distributions.Categorical(logits=logits)
+                    action = dist.sample()
+                    
+                    if self.training:
+                        log_prob = dist.log_prob(action)
+                        value = self.critic(state)
+                        self.memory.add(state.cpu(), action.item(), 0, value.item(), log_prob.item(), False)
+        
         # Convert to actual placement action
         placement_action = self.convert_action(action.item(), observation)
         
@@ -275,11 +292,6 @@ class ProximalPolicyOptimization(Policy):
             placement_action = self._get_greedy_valid_action(observation)
         
         self.steps += 1
-        
-        # Add logging every 100 steps
-        if self.debug_mode and self.steps % 100 == 0:
-            self._log_step_summary(observation, placement_action, info)
-        
         return placement_action
 
     def normalize_state(self, state):
@@ -292,34 +304,17 @@ class ProximalPolicyOptimization(Policy):
         self.state_std = 0.99 * self.state_std + 0.01 * state.std()
     
     def convert_action(self, action_idx, observation):
-        # Convert network output to placement parameters
-        """
-        Convert an action index into a valid product placement within the given observation.
-
-        This function maps the action index to a specific stock and position, then attempts
-        to place a product from the observation's list of products onto the selected stock.
-        If the placement is valid, it returns a dictionary containing the stock index, the
-        product size, and the position on the stock. If no valid placement is found, it falls
-        back to a method that attempts to find a random valid placement.
-
-        Args:
-            action_idx (int): The index of the action chosen by the policy network.
-            observation (dict): A dictionary containing the current state, including stocks
-                and products with their respective attributes.
-
-        Returns:
-            dict: A dictionary with keys 'stock_idx', 'size', and 'position', representing
-                the stock index, product size, and placement position, respectively. Returns
-                None if no valid placement can be found.
-        """
+        """Convert network output to placement parameters with pattern consideration"""
         max_stocks = len(observation["stocks"])
         stock_idx = min(action_idx // 25, max_stocks - 1)
         position = action_idx % 25
         pos_x = position // 5
         pos_y = position % 5
         
-        # Find valid product placement
-        valid_action = None
+        # Find best product placement considering patterns
+        best_action = None
+        best_pattern_score = float('-inf')
+        
         for prod in observation["products"]:
             if prod["quantity"] > 0:
                 stock = observation["stocks"][stock_idx]
@@ -330,18 +325,24 @@ class ProximalPolicyOptimization(Policy):
                 scaled_y = min(int(pos_y * stock_h / 5), stock_h - prod["size"][1])
                 
                 if self._can_place_(stock, (scaled_x, scaled_y), prod["size"]):
-                    valid_action = {
-                        "stock_idx": stock_idx,
-                        "size": prod["size"],
-                        "position": (scaled_x, scaled_y)
-                    }
-                    break
+                    # Evaluate pattern quality
+                    pattern_score = self.evaluate_placement_pattern(
+                        stock, scaled_x, scaled_y, prod["size"][0], prod["size"][1]
+                    )
+                    
+                    if pattern_score > best_pattern_score:
+                        best_pattern_score = pattern_score
+                        best_action = {
+                            "stock_idx": stock_idx,
+                            "size": prod["size"],
+                            "position": (scaled_x, scaled_y)
+                        }
         
         # Fallback to random valid action if needed
-        if valid_action is None:
-            valid_action = self._get_random_valid_action(observation)
+        if best_action is None:
+            best_action = self._get_random_valid_action(observation)
         
-        return valid_action
+        return best_action
     
     def compute_gae(self, rewards, values, dones):
         """
@@ -487,37 +488,104 @@ class ProximalPolicyOptimization(Policy):
             return False
     
     def calculate_reward(self, action, observation, info):
+        """Calculate comprehensive reward with focus on adjacent placement"""
         if action is None:
-            reward = -2.0
-        else:
-            reward = 0
-            # 1. Thưởng cho việc sử dụng hiệu quả stock hiện tại
-            current_stock = observation['stocks'][action['stock_idx']]
-            stock_filled_ratio = self.calculate_stock_filled_ratio(current_stock)
-            reward += stock_filled_ratio * 10.0
-            
-            # 2. Phạt cho việc sử dụng nhiều stocks
-            used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
-            stock_penalty = -0.5 * used_stocks
-            reward += stock_penalty
-            
-            # 3. Thưởng đặc biệt cho việc hoàn thành products
-            total_remaining = sum(prod["quantity"] for prod in observation["products"])
-            if self.prev_total_products is None:
-                self.prev_total_products = total_remaining
-            products_completed = self.prev_total_products - total_remaining
-            
-            if products_completed > 0:
-                completion_bonus = products_completed * (5.0 / max(1, used_stocks))
-                reward += completion_bonus
-            
-            self.prev_total_products = total_remaining
-
-        # Cập nhật last_reward và reward_history
-        self.last_reward = reward
-        self.reward_history.append(reward)
+            return -2.0
         
+        reward = 0
+        current_filled_ratio = info.get('filled_ratio', 0)
+        filled_ratio_change = current_filled_ratio - self.prev_filled_ratio
+        
+        # Get current action details
+        stock = observation["stocks"][action["stock_idx"]]
+        pos_x, pos_y = action["position"]
+        size_w, size_h = action["size"]
+        stock_w, stock_h = self._get_stock_size_(stock)
+        piece_area = size_w * size_h
+        
+        # 1. Adjacent Placement Reward (50%)
+        adjacent_count = self._count_adjacent_pieces(stock, pos_x, pos_y, size_w, size_h)
+        adjacent_reward = adjacent_count * 4.0  # Significantly increased multiplier
+        reward += adjacent_reward
+        
+        # 2. Area Utilization Reward (30%)
+        filled_ratio_reward = filled_ratio_change * 30.0
+        reward += filled_ratio_reward
+        
+        # 3. Stock Usage Strategy (15%)
+        stock_usage = np.sum(stock != -1) - piece_area
+        if piece_area < 20:  # Small piece
+            if stock_usage > 0:  # Stock already in use
+                reward += 3.0  # Bonus for using partially filled stock
+                # Additional bonus based on current utilization
+                current_utilization = stock_usage / (stock_w * stock_h)
+                if current_utilization > 0.5:
+                    reward += 2.0
+            else:  # New stock
+                reward -= 4.0  # Penalty for using new stock for small piece
+        
+        # 4. Edge and Corner Placement (5% - reduced significance)
+        if pos_x == 0 and pos_y == 0:  # Corner
+            reward += 1.0
+        elif pos_x == 0 or pos_y == 0:  # Edge
+            reward += 0.5
+        
+        # 5. Dynamic Waste Prevention
+        remaining_area = stock_w * stock_h - np.sum(stock != -1)
+        waste_ratio = remaining_area / (stock_w * stock_h)
+        
+        if waste_ratio < 0.1:  # Excellent utilization
+            reward += 2.0
+        elif waste_ratio > 0.3:  # High waste
+            reward -= waste_ratio * 2.0
+        
+        # Update previous ratio
+        self.prev_filled_ratio = current_filled_ratio
         return reward
+
+    def _count_adjacent_pieces(self, stock, pos_x, pos_y, size_w, size_h):
+        """Enhanced adjacent piece counting with directional bonuses"""
+        count = 0
+        stock_w, stock_h = self._get_stock_size_(stock)
+        
+        # Check all sides with additional weight for perfect fits
+        # Left side
+        if pos_x > 0:
+            left_adjacent = np.any(stock[pos_y:pos_y+size_h, pos_x-1] != -1)
+            if left_adjacent:
+                count += 1
+                # Perfect vertical alignment bonus
+                if np.all(stock[pos_y:pos_y+size_h, pos_x-1] != -1):
+                    count += 0.5
+        
+        # Right side
+        if pos_x + size_w < stock_w:
+            right_adjacent = np.any(stock[pos_y:pos_y+size_h, pos_x+size_w] != -1)
+            if right_adjacent:
+                count += 1
+                # Perfect vertical alignment bonus
+                if np.all(stock[pos_y:pos_y+size_h, pos_x+size_w] != -1):
+                    count += 0.5
+        
+        # Top side
+        if pos_y > 0:
+            top_adjacent = np.any(stock[pos_y-1, pos_x:pos_x+size_w] != -1)
+            if top_adjacent:
+                count += 1
+                # Perfect horizontal alignment bonus
+                if np.all(stock[pos_y-1, pos_x:pos_x+size_w] != -1):
+                    count += 0.5
+        
+        # Bottom side
+        if pos_y + size_h < stock_h:
+            bottom_adjacent = np.any(stock[pos_y+size_h, pos_x:pos_x+size_w] != -1)
+            if bottom_adjacent:
+                count += 1
+                # Perfect horizontal alignment bonus
+                if np.all(stock[pos_y+size_h, pos_x:pos_x+size_w] != -1):
+                    count += 0.5
+        
+        return count
 
     def calculate_stock_filled_ratio(self, stock):
         """Calculate filled ratio for a single stock"""
@@ -557,47 +625,11 @@ class ProximalPolicyOptimization(Policy):
         # Return weighted score
         return space_efficiency * 3.0 + remaining_ratio * 2.0
 
-    def calculate_reward(self, action, observation, info):
-        """Calculate comprehensive reward"""
-        if action is None:
-            return -2.0
-            
-        reward = 0
-        current_filled_ratio = info.get('filled_ratio', 0)
-        filled_ratio_change = current_filled_ratio - self.prev_filled_ratio
-        
-        # 1. Filled Ratio (30%)
-        filled_ratio_reward = filled_ratio_change * 15.0
-        reward += filled_ratio_reward
-        
-        # 2. Space Utilization (30%)
-        stock = observation["stocks"][action["stock_idx"]]
-        pos_x, pos_y = action["position"]
-        size_w, size_h = action["size"]
-        
-        space_reward = self.calculate_space_utilization(stock, pos_x, pos_y, size_w, size_h)
-        reward += space_reward
-        
-        # 3. Waste Penalty
-        stock_w, stock_h = self._get_stock_size_(stock)
-        waste_area = (stock_w * stock_h) - (size_w * size_h)
-        waste_penalty = -0.05 * (waste_area / (stock_w * stock_h))
-        reward += waste_penalty
-        
-        # 4. Completion Bonus
-        remaining_products = sum(prod['quantity'] for prod in observation['products'])
-        for prod in observation["products"]:
-            if prod["quantity"] == 1 and np.array_equal(prod["size"], action["size"]):
-                reward += 3.0
-                if remaining_products <= 3:
-                    reward += 2.0
-        
-        self.prev_filled_ratio = current_filled_ratio
-        return reward
     def calculate_stock_penalty(self, observation):
         used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock > 0))
         stock_penalty = -0.2 * used_stocks
         return stock_penalty
+
     def _is_good_pattern(self, pos_x, pos_y, size_w, size_h, stock):
         """Evaluate if the placement creates a good cutting pattern"""
         stock_w, stock_h = self._get_stock_size_(stock)
@@ -642,7 +674,7 @@ class ProximalPolicyOptimization(Policy):
         return None  # Return None if no valid action is found
     
     def evaluate_cutting_pattern(self, observation, action, info):
-        """Đánh giá chất lượng của một cutting pattern"""
+        """Evaluate the quality of a cutting pattern"""
         if action is None:
             return None
         
@@ -719,7 +751,7 @@ class ProximalPolicyOptimization(Policy):
         print("1. Efficiency Metrics:")
         print(f"  ├── Stocks Used: {used_stocks}")
         print(f"  ├── Products Completed: {products_completed}/{self.initial_products} ({(products_completed/self.initial_products)*100:.1f}%)")
-        print(f"  └── Products Remaining: {current_total_products}")
+        print(f"  ├── Products Remaining: {current_total_products}")
         
         # 2. Current Action Analysis
         print("\n2. Current Action:")
@@ -727,7 +759,7 @@ class ProximalPolicyOptimization(Policy):
             current_stock = observation['stocks'][action['stock_idx']]
             stock_ratio = self.calculate_stock_filled_ratio(current_stock)
             
-            print(f"  ├── Stock Index: {action['stock_idx']}")
+            print(f"  ── Stock Index: {action['stock_idx']}")
             print(f"  ├── Position: {action['position']}")
             print(f"  ├── Product Size: {action['size']}")
             print(f"  ├── Current Stock Fill Ratio: {stock_ratio:.3f}")
@@ -848,6 +880,208 @@ class ProximalPolicyOptimization(Policy):
         print(f"  └── Final Grade: {grade} (Score: {avg_score:.3f})")
         print("="*70 + "\n")
 
+    def find_best_fitting_stock(self, observation, product_size):
+        """Enhanced stock selection with better initial placement strategy"""
+        best_stock_idx = None
+        best_score = float('-inf')
+        product_area = product_size[0] * product_size[1]
+        
+        # Count total used stocks
+        used_stocks = sum(1 for stock in observation["stocks"] if np.any(stock != -1))
+        
+        for idx, stock in enumerate(observation["stocks"]):
+            stock_w, stock_h = self._get_stock_size_(stock)
+            used_area = np.sum(stock != -1)
+            
+            # Skip fully used stocks
+            if used_area == stock_w * stock_h:
+                continue
+            
+            score = 0
+            
+            # Strongly prefer empty stocks at the beginning
+            if used_stocks < 3 and used_area == 0:
+                score += 10.0
+            
+            # Rest of the existing scoring logic
+            if product_area < 20:  # Small products
+                if used_area > 0:
+                    score += 5.0
+                small_products_count = self._count_small_products(stock)
+                score += small_products_count * 2.0
+                if stock_w * stock_h < 50:
+                    score += 3.0
+            else:  # Larger products
+                remaining_area = stock_w * stock_h - used_area
+                score = -abs(remaining_area - product_area * 1.2)
+            
+            if score > best_score:
+                best_score = score
+                best_stock_idx = idx
+        
+        return best_stock_idx
+
+    def _count_small_products(self, stock):
+        """Count number of small products (isolated pieces) in the stock"""
+        unique_products = np.unique(stock[stock != -1])
+        small_products = 0
+        
+        for prod_id in unique_products:
+            prod_mask = stock == prod_id
+            if np.sum(prod_mask) < 20:  # Consider products smaller than 20 cells
+                small_products += 1
+            
+        return small_products
+
+    def evaluate_placement_pattern(self, stock, pos_x, pos_y, size_w, size_h):
+        """Enhanced pattern evaluation with better small product handling"""
+        stock_w, stock_h = self._get_stock_size_(stock)
+        score = 0
+        piece_area = size_w * size_h
+        is_small_piece = piece_area < 20
+        
+        # Special handling for small pieces
+        if is_small_piece:
+            # 1. Strongly encourage corner and edge placements (50%)
+            if pos_x == 0 and pos_y == 0:  # Corner
+                score += 3.0
+            elif pos_x == 0 or pos_y == 0:  # Edge
+                score += 2.0
+            
+            # 2. Reward clustering with other small pieces (30%)
+            nearby_small = self._count_nearby_small_pieces(stock, pos_x, pos_y, size_w, size_h)
+            score += nearby_small * 1.5
+            
+            # 3. Penalize scattered placements (20%)
+            distance_to_filled = self._get_distance_to_filled(stock, pos_x, pos_y)
+            score -= distance_to_filled * 0.5
+        else:
+            # Logic for larger pieces
+            # 1. Edge alignment (40%)
+            if pos_x == 0 or pos_x + size_w == stock_w:
+                score += 2.0
+            if pos_y == 0 or pos_y + size_h == stock_h:
+                score += 2.0
+            
+            # 2. Corner bonus (30%)
+            if (pos_x == 0 or pos_x + size_w == stock_w) and \
+               (pos_y == 0 or pos_y + size_h == stock_h):
+                score += 3.0
+            
+            # 3. Space utilization (30%)
+            used_space = np.sum(stock != -1)
+            total_space = stock_w * stock_h
+            utilization = used_space / total_space
+            score += utilization * 2.0
+        
+        return score
+
+    def _count_nearby_small_pieces(self, stock, pos_x, pos_y, size_w, size_h):
+        """Count small pieces within a 3-cell radius"""
+        padding = 3
+        x_start = max(0, pos_x - padding)
+        x_end = min(stock.shape[1], pos_x + size_w + padding)
+        y_start = max(0, pos_y - padding)
+        y_end = min(stock.shape[0], pos_y + size_h + padding)
+        
+        region = stock[y_start:y_end, x_start:x_end]
+        unique_products = np.unique(region[region != -1])
+        
+        small_pieces = 0
+        for prod_id in unique_products:
+            prod_mask = region == prod_id
+            if np.sum(prod_mask) < 20:
+                small_pieces += 1
+            
+        return small_pieces
+
+    def _get_distance_to_filled(self, stock, pos_x, pos_y):
+        """Calculate Manhattan distance to nearest filled cell"""
+        filled_positions = np.where(stock != -1)
+        if len(filled_positions[0]) == 0:
+            return 0
+        
+        distances = abs(filled_positions[0] - pos_y) + abs(filled_positions[1] - pos_x)
+        return np.min(distances) if len(distances) > 0 else 0
+
+    def _get_structured_placement(self, observation):
+        """Get structured placement for initial or few remaining products"""
+        # Find the largest product first
+        largest_product = None
+        largest_area = 0
+        for prod in observation["products"]:
+            if prod["quantity"] > 0:
+                area = prod["size"][0] * prod["size"][1]
+                if area > largest_area:
+                    largest_area = area
+                    largest_product = prod
+        
+        if not largest_product:
+            return None
+        
+        # Try to place in the first available stock
+        for stock_idx, stock in enumerate(observation["stocks"]):
+            stock_w, stock_h = self._get_stock_size_(stock)
+            
+            # If stock is empty, try corners first
+            if np.all(stock == -1):
+                # Try corners in this order: top-left, top-right, bottom-left, bottom-right
+                corners = [
+                    (0, 0),
+                    (stock_w - largest_product["size"][0], 0),
+                    (0, stock_h - largest_product["size"][1]),
+                    (stock_w - largest_product["size"][0], stock_h - largest_product["size"][1])
+                ]
+                
+                for pos_x, pos_y in corners:
+                    if self._can_place_(stock, (pos_x, pos_y), largest_product["size"]):
+                        return {
+                            "stock_idx": stock_idx,
+                            "size": largest_product["size"],
+                            "position": (pos_x, pos_y)
+                        }
+            
+            # If no corners available, try edges
+            edges = []
+            # Top edge
+            for x in range(0, stock_w - largest_product["size"][0] + 1):
+                edges.append((x, 0))
+            # Left edge
+            for y in range(0, stock_h - largest_product["size"][1] + 1):
+                edges.append((0, y))
+            # Bottom edge
+            for x in range(0, stock_w - largest_product["size"][0] + 1):
+                edges.append((x, stock_h - largest_product["size"][1]))
+            # Right edge
+            for y in range(0, stock_h - largest_product["size"][1] + 1):
+                edges.append((stock_w - largest_product["size"][0], y))
+            
+            # Try each edge position
+            for pos_x, pos_y in edges:
+                if self._can_place_(stock, (pos_x, pos_y), largest_product["size"]):
+                    return {
+                        "stock_idx": stock_idx,
+                        "size": largest_product["size"],
+                        "position": (pos_x, pos_y)
+                    }
+        
+        # If no structured placement is possible, return None
+        return None
+
+    def _get_largest_product(self, observation):
+        """Find the product with the largest area that still has remaining quantity"""
+        largest_product = None
+        largest_area = 0
+        
+        for product in observation["products"]:
+            if product["quantity"] > 0:  # Only consider products with remaining quantity
+                area = product["size"][0] * product["size"][1]
+                if area > largest_area:
+                    largest_area = area
+                    largest_product = product
+        
+        return largest_product
+
 class EpisodeEvaluator:
     def __init__(self):
         self.metrics = {
@@ -868,11 +1102,11 @@ class EpisodeEvaluator:
         for stock in observation['stocks']:
             if np.any(stock > 0):  # Stock has been used
                 stock_area = stock.shape[0] * stock.shape[1]
-                used_area = np.sum(stock > 0)
-                waste = stock_area - used_area
+                empty_area = np.sum(stock == -1)  # Count cells with -1
+                waste = empty_area               # Waste is the empty area
                 total_waste += waste
                 used_stocks += 1
-                
+            
         return {
             'total_waste': total_waste,
             'num_stocks': used_stocks,
@@ -894,6 +1128,7 @@ class EpisodeEvaluator:
         })
         
         return self.get_summary()
+
     
     def get_summary(self):
         """Return formatted summary of episode performance"""
