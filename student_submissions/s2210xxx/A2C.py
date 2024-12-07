@@ -192,7 +192,8 @@ class AdvantageActorCritic(Policy):
         max_stocks = 100
         self.max_products = None
         self.state_dim = None
-        self.action_dim = max_stocks * 25
+        # Double action space to account for rotations
+        self.action_dim = max_stocks * 25 * 2  # Doubled for rotation
         
         # Training flag
         self.training = True
@@ -460,50 +461,63 @@ class AdvantageActorCritic(Policy):
         return torch.FloatTensor(state)
     
     def convert_action(self, action_idx, observation):
-        # Convert network output to placement parameters
-        """
-        Convert an action index into a valid product placement within the given observation.
-
-        Args:
-            action_idx (int): The index of the action chosen by the policy network.
-            observation (dict): A dictionary containing the current state.
-
-        Returns:
-            dict: A dictionary with keys 'stock_idx', 'size', and 'position'.
-        """
+        """Convert network output to placement parameters with rotation support"""
         if action_idx is None:
             return None
 
         max_stocks = len(observation["stocks"])
+        # Determine if action is rotated (second half of action space)
+        is_rotated = action_idx >= (max_stocks * 25)
+        if is_rotated:
+            action_idx -= (max_stocks * 25)
+        
         stock_idx = min(action_idx // 25, max_stocks - 1)
         position = action_idx % 25
         pos_x = position // 5
         pos_y = position % 5
         
-        # Find valid product placement
-        valid_action = None
+        # Find best product placement considering rotation
+        best_action = None
+        best_pattern_score = float('-inf')
+        
         for prod in observation["products"]:
             if prod["quantity"] > 0:
                 stock = observation["stocks"][stock_idx]
                 stock_w, stock_h = self._get_stock_size_(stock)
                 
-                # Scale position to actual stock size
-                scaled_x = min(int(pos_x * stock_w / 5), stock_w - prod["size"][0])
-                scaled_y = min(int(pos_y * stock_h / 5), stock_h - prod["size"][1])
+                # Try both original and rotated orientations
+                orientations = [
+                    list(prod["size"]),  # Original orientation
+                    [prod["size"][1], prod["size"][0]]  # Rotated orientation
+                ]
                 
-                if self._can_place_(stock, (scaled_x, scaled_y), prod["size"]):
-                    valid_action = {
-                        "stock_idx": stock_idx,
-                        "size": prod["size"],
-                        "position": (scaled_x, scaled_y)
-                    }
-                    break
+                for prod_size in orientations:
+                    # Scale position to actual stock size
+                    scaled_x = min(int(pos_x * stock_w / 5), stock_w - prod_size[0])
+                    scaled_y = min(int(pos_y * stock_h / 5), stock_h - prod_size[1])
+                    
+                    if self._can_place_(stock, (scaled_x, scaled_y), prod_size):
+                        pattern_score = self.evaluate_placement_pattern(
+                            stock, scaled_x, scaled_y, prod_size[0], prod_size[1]
+                        )
+                        
+                        # Prefer rotated orientation if it results in better utilization
+                        if prod_size != list(prod["size"]):  # If this is the rotated version
+                            pattern_score *= 1.1  # Small bonus for successful rotation
+                        
+                        if pattern_score > best_pattern_score:
+                            best_pattern_score = pattern_score
+                            best_action = {
+                                "stock_idx": stock_idx,
+                                "size": prod_size,
+                                "position": (scaled_x, scaled_y)
+                            }
         
         # Fallback to random valid action if needed
-        if valid_action is None:
-            valid_action = self._get_random_valid_action(observation)
+        if best_action is None:
+            best_action = self._get_random_valid_action(observation, allow_rotation=True)
         
-        return valid_action
+        return best_action
     
     def compute_advantages(self, rewards, values, dones):
         """Compute advantages using TD(0)"""
@@ -625,73 +639,67 @@ class AdvantageActorCritic(Policy):
     def calculate_reward(self, action, observation, info):
         """Calculate comprehensive reward similar to PPO"""
         if action is None:
-            return -2.0
-            
+            return -10.0  # Increased penalty for invalid actions
+        
         reward = 0
-        current_filled_ratio = info.get('filled_ratio', 0)
+        current_filled_ratio = self.calculate_filled_ratio(observation)
         filled_ratio_change = current_filled_ratio - self.prev_filled_ratio
         
-        # 1. Filled Ratio Reward (30%)
-        filled_ratio_reward = filled_ratio_change * 15.0
+        # Get current action details
+        stock = observation["stocks"][action["stock_idx"]]
+        pos_x, pos_y = action["position"]
+        size_w, size_h = action["size"]
+        stock_w, stock_h = self._get_stock_size_(stock)
+        piece_area = size_w * size_h
+        
+        # 1. Scattered Placement Penalty (Controlled Exponential)
+        adjacent_count = self._count_adjacent_pieces(stock, pos_x, pos_y, size_w, size_h)
+        if adjacent_count == 0:
+            if np.sum(stock != -1) > 0:
+                distance = self._get_distance_to_filled(stock, pos_x, pos_y)
+                scatter_penalty = -5.0 * min(8, (1.5 ** min(distance, 4)))
+                reward += scatter_penalty
+        else:
+            adjacency_reward = 2.0 * min(5, (1.2 ** min(adjacent_count, 4)))
+            reward += adjacency_reward
+        
+        # 2. Top-Down Fill Violation
+        empty_cells_above = 0
+        for x in range(pos_x, pos_x + size_w):
+            for y in range(0, pos_y):
+                if stock[y, x] == -1:
+                    empty_cells_above += 1
+        if empty_cells_above > 0:
+            vertical_penalty = -1.0 * min(10, (1.2 ** min(empty_cells_above, 5)))
+            reward += vertical_penalty
+        
+        # 3. Edge and Corner Bonuses
+        if pos_x == 0 and pos_y == 0:
+            reward += 8.0
+        elif pos_x == 0 or pos_y == 0:
+            reward += 4.0
+        
+        # 4. New Stock Penalty
+        if np.sum(stock != -1) == piece_area:
+            used_stocks = sum(1 for s in observation["stocks"] if np.any(s != -1))
+            if piece_area < stock_w * stock_h * 0.3:
+                new_stock_penalty = -5.0 * min(8, (1.2 ** min(used_stocks, 5)))
+                reward += new_stock_penalty
+        
+        # 5. Area Utilization
+        filled_ratio_reward = filled_ratio_change * 30.0
         reward += filled_ratio_reward
         
-        # 2. Space Utilization (30%)
-        if action is not None:
-            stock = observation["stocks"][action["stock_idx"]]
-            pos_x, pos_y = action["position"]
-            size_w, size_h = action["size"]
-            
-            # Calculate stock utilization
-            stock_w, stock_h = self._get_stock_size_(stock)
-            stock_filled_ratio = self.calculate_stock_filled_ratio(stock)
-            reward += stock_filled_ratio * 10.0
-            
-            # Edge and corner bonuses
-            if pos_x == 0 or pos_x + size_w == stock_w:
-                reward += 0.2
-            if pos_y == 0 or pos_y + size_h == stock_h:
-                reward += 0.2
-            if (pos_x == 0 and pos_y == 0) or \
-               (pos_x == 0 and pos_y + size_h == stock_h) or \
-               (pos_x + size_w == stock_w and pos_y == 0) or \
-               (pos_x + size_w == stock_w and pos_y + size_h == stock_h):
-                reward += 0.3
+        # 6. Isolation Penalty
+        empty_neighbors = self._count_empty_neighbors(stock, pos_x, pos_y, size_w, size_h)
+        if empty_neighbors > 0:
+            isolation_penalty = -2.0 * min(5, (1.2 ** min(empty_neighbors, 4)))
+            reward += isolation_penalty
         
-        # 3. Product Completion Reward
-        total_remaining = sum(prod["quantity"] for prod in observation["products"])
-        if self.prev_total_products is None:
-            self.prev_total_products = total_remaining
-        products_completed = self.prev_total_products - total_remaining
-        
-        if products_completed > 0:
-            used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
-            completion_bonus = products_completed * (5.0 / max(1, used_stocks))
-            reward += completion_bonus
-            
-            # Extra bonus for completing products when few remain
-            if total_remaining <= 3:
-                reward += 2.0
-        
-        # 4. Stock Usage Penalty
-        used_stocks = sum(1 for stock in observation['stocks'] if np.any(stock != -1))
-        stock_penalty = -0.5 * used_stocks
-        reward += stock_penalty
-        
-        # 5. Waste Penalty
-        if action is not None:
-            waste_area = (stock_w * stock_h) - (size_w * size_h)
-            waste_penalty = -0.05 * (waste_area / (stock_w * stock_h))
-            reward += waste_penalty
-        
-        # Update tracking variables
+        # Update previous ratio
         self.prev_filled_ratio = current_filled_ratio
-        self.prev_total_products = total_remaining
-        
-        # Update reward history
-        self.last_reward = reward
-        self.reward_history.append(reward)
-        
         return reward
+    
     def calculate_stock_filled_ratio(self, stock):
         """Calculate filled ratio for a single stock"""
         if stock is None:
@@ -700,6 +708,7 @@ class AdvantageActorCritic(Policy):
         total_area = stock_w * stock_h
         used_area = np.sum(stock != -1)
         return used_area / total_area
+    
     def calculate_space_utilization(self, stock, pos_x, pos_y, size_w, size_h):
         """Calculate how efficiently the remaining space can be used"""
         stock_w, stock_h = self._get_stock_size_(stock)
@@ -756,26 +765,32 @@ class AdvantageActorCritic(Policy):
         
         return is_edge_aligned and has_usable_space
     
-    def _get_random_valid_action(self, observation):
-        """Get a random valid action when the policy's chosen action is invalid."""
+    def _get_random_valid_action(self, observation, allow_rotation=True):
+        """Get a random valid action with optional rotation."""
         for stock_idx, stock in enumerate(observation["stocks"]):
             stock_w, stock_h = self._get_stock_size_(stock)
             
             for prod in observation["products"]:
                 if prod["quantity"] > 0:
-                    prod_w, prod_h = prod["size"]
+                    # Try both orientations if rotation is allowed
+                    orientations = [prod["size"]]
+                    if allow_rotation:
+                        orientations.append((prod["size"][1], prod["size"][0]))
                     
-                    # Try random positions until a valid one is found
-                    for _ in range(10):  # Limit attempts to avoid infinite loop
-                        pos_x = np.random.randint(0, max(1, stock_w - prod_w + 1))
-                        pos_y = np.random.randint(0, max(1, stock_h - prod_h + 1))
+                    for size in orientations:
+                        prod_w, prod_h = size
                         
-                        if self._can_place_(stock, (pos_x, pos_y), prod["size"]):
-                            return {
-                                "stock_idx": stock_idx,
-                                "size": prod["size"],
-                                "position": (pos_x, pos_y)
-                            }
+                        # Try random positions until a valid one is found
+                        for _ in range(10):  # Limit attempts to avoid infinite loop
+                            pos_x = np.random.randint(0, max(1, stock_w - prod_w + 1))
+                            pos_y = np.random.randint(0, max(1, stock_h - prod_h + 1))
+                            
+                            if self._can_place_(stock, (pos_x, pos_y), size):
+                                return {
+                                    "stock_idx": stock_idx,
+                                    "size": size,
+                                    "position": (pos_x, pos_y)
+                                }
         
         return None  # Return None if no valid action is found
     
@@ -977,3 +992,77 @@ class AdvantageActorCritic(Policy):
         print(f"  └── Final Grade: {grade} (Score: {avg_score:.3f})")
         print("="*70 + "\n")
     
+    def evaluate_placement_pattern(self, stock, pos_x, pos_y, size_w, size_h):
+        """Evaluate the quality of a placement pattern"""
+        score = 0
+        stock_w, stock_h = self._get_stock_size_(stock)
+        
+        # Edge alignment bonus
+        if pos_x == 0 or pos_x + size_w == stock_w:
+            score += 2
+        if pos_y == 0 or pos_y + size_h == stock_h:
+            score += 2
+        
+        # Corner placement bonus
+        if (pos_x == 0 and pos_y == 0) or \
+           (pos_x == 0 and pos_y + size_h == stock_h) or \
+           (pos_x + size_w == stock_w and pos_y == 0) or \
+           (pos_x + size_w == stock_w and pos_y + size_h == stock_h):
+            score += 3
+        
+        # Adjacent pieces bonus
+        adjacent_count = self._count_adjacent_pieces(stock, pos_x, pos_y, size_w, size_h)
+        score += adjacent_count * 1.5
+        
+        return score
+    
+    def _count_adjacent_pieces(self, stock, pos_x, pos_y, size_w, size_h):
+        """Count adjacent pieces in a placement pattern"""
+        stock_w, stock_h = self._get_stock_size_(stock)
+        adjacent_count = 0
+        
+        # Check adjacent pieces in all four directions
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                if dx == 0 and dy == 0:
+                    continue
+                if 0 <= pos_x + dx < stock_w and 0 <= pos_y + dy < stock_h:
+                    if stock[pos_y + dy, pos_x + dx] != -1:
+                        adjacent_count += 1
+        
+        return adjacent_count
+    
+    def _get_distance_to_filled(self, stock, pos_x, pos_y):
+        """Calculate Manhattan distance to nearest filled cell"""
+        filled_positions = np.argwhere(stock != -1)
+        if len(filled_positions) == 0:
+            return 0
+        
+        distances = abs(filled_positions[:, 0] - pos_y) + abs(filled_positions[:, 1] - pos_x)
+        return np.min(distances)
+    
+    def _count_empty_neighbors(self, stock, pos_x, pos_y, size_w, size_h):
+        """Count empty neighboring cells"""
+        empty_count = 0
+        stock_h, stock_w = stock.shape
+        
+        # Check all cells around the placement
+        for x in range(max(0, pos_x - 1), min(stock_w, pos_x + size_w + 1)):
+            for y in range(max(0, pos_y - 1), min(stock_h, pos_y + size_h + 1)):
+                if (x < pos_x or x >= pos_x + size_w or y < pos_y or y >= pos_y + size_h):
+                    if stock[y, x] == -1:
+                        empty_count += 1
+        
+        return empty_count
+
+    def calculate_filled_ratio(self, observation):
+        """Calculate the filled ratio of the observation"""
+        total_area = 0
+        filled_area = 0
+        
+        for stock in observation['stocks']:
+            total_area += stock.shape[0] * stock.shape[1]
+            filled_area += np.sum(stock != -1)
+        
+        return filled_area / total_area if total_area > 0 else 0.0
+
