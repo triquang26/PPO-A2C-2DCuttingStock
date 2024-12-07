@@ -1,0 +1,1505 @@
+
+Step 1:
+Action: {'stock_idx': 30, 'size': array([20, 36]), 'position': (66, 36)}
+Step Reward: -8.372
+Current Filled Ratio: 0.010
+Step Waste: 0
+Episode Total Reward: -8.372
+--------------------------------------------------
+
+Step 2:
+Action: {'stock_idx': 29, 'size': array([20, 36]), 'position': (55, 16)}
+Step Reward: 0.663
+Current Filled Ratio: 0.020
+Step Waste: 0
+Episode Total Reward: -7.709
+--------------------------------------------------
+
+Step 3:
+Action: {'stock_idx': 86, 'size': array([26, 26]), 'position': (14, 43)}
+Step Reward: 4.421
+Current Filled Ratio: 0.030
+Step Waste: 9324
+Episode Total Reward: -3.288
+--------------------------------------------------
+
+Step 4:
+Action: {'stock_idx': 97, 'size': array([26, 26]), 'position': (38, 12)}
+Step Reward: 0.933
+Current Filled Ratio: 0.040
+Step Waste: 9324
+Episode Total Reward: -2.355
+--------------------------------------------------
+
+Step 5:
+Action: {'stock_idx': 25, 'size': array([38,  5]), 'position': (16, 31)}
+Step Reward: 0.995
+Current Filled Ratio: 0.050
+Step Waste: 9810
+Episode Total Reward: -1.360
+--------------------------------------------------
+
+Step 6:
+Action: {'stock_idx': 29, 'size': array([ 1, 41]), 'position': (45, 11)}
+Step Reward: 0.755
+Current Filled Ratio: 0.050
+Step Waste: 9959
+Episode Total Reward: -0.604
+--------------------------------------------------
+
+Step 7:
+Action: {'stock_idx': 36, 'size': array([38,  5]), 'position': (32, 32)}
+Step Reward: 3.951
+Current Filled Ratio: 0.060
+Step Waste: 9810
+Episode Total Reward: 3.347
+--------------------------------------------------
+
+Step 8:
+Action: {'stock_idx': 40, 'size': array([38,  5]), 'position': (23, 0)}
+Step Reward: 1.382
+Current Filled Ratio: 0.070
+Step Waste: 9810
+Episode Total Reward: 4.729
+--------------------------------------------------
+
+Step 9:
+Action: {'stock_idx': 27, 'size': array([41,  9]), 'position': (30, 0)}
+Step Reward: 1.326
+Current Filled Ratio: 0.080
+Step Waste: 9631
+Episode Total Reward: 6.055
+--------------------------------------------------
+
+Step 10:
+Action: {'stock_idx': 16, 'size': array([41,  9]), 'position': (36, 76)}
+Step Reward: 0.366
+Current Filled Ratio: 0.090
+Step Waste: 9631
+Episode Total Reward: 6.421
+--------------------------------------------------
+
+Step 11:
+Action: {'stock_idx': 0, 'size': array([41,  9]), 'position': (11, 42)}
+Step Reward: 1.403
+Current Filled Ratio: 0.100
+Step Waste: 9631
+Episode Total Reward: 7.824
+--------------------------------------------------
+
+Step 12:
+Action: {'stock_idx': 68, 'size': array([41,  9]), 'position': (10, 15)}
+Step Reward: 1.524
+Current Filled Ratio: 0.110
+Step Waste: 9631
+Episode Total Reward: 9.348
+--------------------------------------------------
+
+Step 13:
+Action: {'stock_idx': 36, 'size': array([41,  9]), 'position': (0, 48)}
+Step Reward: 1.396
+Current Filled Ratio: 0.110
+Step Waste: 9441
+Episode Total Reward: 10.743
+--------------------------------------------------
+
+Step 14:
+Action: {'stock_idx': 13, 'size': array([41,  9]), 'position': (0, 49)}
+Step Reward: 1.287
+Current Filled Ratio: 0.120
+Step Waste: 9631
+Episode Total Reward: 12.030
+--------------------------------------------------
+
+Step 15:
+Action: {'stock_idx': 57, 'size': array([41,  9]), 'position': (0, 27)}
+Step Reward: 1.637
+Current Filled Ratio: 0.130
+Step Waste: 9631
+Episode Total Reward: 13.667
+--------------------------------------------------
+
+Step 16:
+Action: {'stock_idx': 54, 'size': array([41,  9]), 'position': (59, 64)}
+Step Reward: 0.320
+Current Filled Ratio: 0.140
+Step Waste: 9631
+Episode Total Reward: 13.987
+--------------------------------------------------
+
+Step 17:
+Action: {'stock_idx': 39, 'size': array([41,  9]), 'position': (33, 0)}
+Step Reward: 1.263
+Current Filled Ratio: 0.150
+Step Waste: 9631
+Episode Total Reward: 15.250
+--------------------------------------------------
+
+Step 18:
+Action: {'stock_idx': 17, 'size': array([41,  9]), 'position': (11, 67)}
+Step Reward: 0.508
+Current Filled Ratio: 0.160
+Step Waste: 9631
+Episode Total Reward: 15.757
+--------------------------------------------------
+
+Step 19:
+Action: {'stock_idx': 9, 'size': array([41,  9]), 'position': (12, 0)}
+Step Reward: 1.730
+Current Filled Ratio: 0.170
+Step Waste: 9631
+Episode Total Reward: 17.488
+--------------------------------------------------
+
+Step 20:
+Action: {'stock_idx': 22, 'size': array([41,  9]), 'position': (0, 19)}
+Step Reward: 1.879
+Current Filled Ratio: 0.180
+Step Waste: 9631
+Episode Total Reward: 19.366
+--------------------------------------------------
+
+Step 21:
+Action: {'stock_idx': 67, 'size': array([41,  9]), 'position': (11, 76)}
+Step Reward: 0.695
+Current Filled Ratio: 0.190
+Step Waste: 9631
+Episode Total Reward: 20.062
+--------------------------------------------------
+
+Step 22:
+Action: {'stock_idx': 26, 'size': array([41,  9]), 'position': (39, 62)}
+Step Reward: 0.372
+Current Filled Ratio: 0.200
+Step Waste: 9631
+Episode Total Reward: 20.434
+--------------------------------------------------
+
+Step 23:
+Action: {'stock_idx': 94, 'size': array([41,  9]), 'position': (18, 18)}
+Step Reward: 1.294
+Current Filled Ratio: 0.210
+Step Waste: 9631
+Episode Total Reward: 21.728
+--------------------------------------------------
+
+Step 24:
+Action: {'stock_idx': 82, 'size': array([41,  9]), 'position': (15, 57)}
+Step Reward: 0.767
+Current Filled Ratio: 0.220
+Step Waste: 9631
+Episode Total Reward: 22.495
+--------------------------------------------------
+
+Step 25:
+Action: {'stock_idx': 15, 'size': array([41,  9]), 'position': (13, 34)}
+Step Reward: 4.314
+Current Filled Ratio: 0.230
+Step Waste: 9631
+Episode Total Reward: 26.808
+--------------------------------------------------
+
+Step 26:
+Action: {'stock_idx': 68, 'size': array([41,  9]), 'position': (10, 60)}
+Step Reward: 0.475
+Current Filled Ratio: 0.230
+Step Waste: 9262
+Episode Total Reward: 27.284
+--------------------------------------------------
+
+Step 27:
+Action: {'stock_idx': 5, 'size': array([23, 22]), 'position': (19, 21)}
+Step Reward: 1.620
+Current Filled Ratio: 0.240
+Step Waste: 9494
+Episode Total Reward: 28.904
+--------------------------------------------------
+
+Step 28:
+Action: {'stock_idx': 91, 'size': array([23, 22]), 'position': (35, 36)}
+Step Reward: 1.164
+Current Filled Ratio: 0.250
+Step Waste: 9494
+Episode Total Reward: 30.068
+--------------------------------------------------
+
+Step 29:
+Action: {'stock_idx': 42, 'size': array([23, 22]), 'position': (18, 37)}
+Step Reward: 1.579
+Current Filled Ratio: 0.260
+Step Waste: 9494
+Episode Total Reward: 31.647
+--------------------------------------------------
+
+Step 30:
+Action: {'stock_idx': 36, 'size': array([23, 22]), 'position': (48, 48)}
+Step Reward: 0.488
+Current Filled Ratio: 0.260
+Step Waste: 8935
+Episode Total Reward: 32.135
+--------------------------------------------------
+
+Step 31:
+Action: {'stock_idx': 68, 'size': array([ 2, 12]), 'position': (43, 0)}
+Step Reward: 0.364
+Current Filled Ratio: 0.260
+Step Waste: 9238
+Episode Total Reward: 32.499
+--------------------------------------------------
+
+Step 32:
+Action: {'stock_idx': 4, 'size': array([23, 22]), 'position': (41, 0)}
+Step Reward: 3.989
+Current Filled Ratio: 0.270
+Step Waste: 9494
+Episode Total Reward: 36.488
+--------------------------------------------------
+
+Step 33:
+Action: {'stock_idx': 43, 'size': array([23, 22]), 'position': (0, 28)}
+Step Reward: 1.991
+Current Filled Ratio: 0.280
+Step Waste: 9494
+Episode Total Reward: 38.478
+--------------------------------------------------
+
+Step 34:
+Action: {'stock_idx': 91, 'size': array([ 1, 41]), 'position': (0, 50)}
+Step Reward: 1.943
+Current Filled Ratio: 0.280
+Step Waste: 9453
+Episode Total Reward: 40.421
+--------------------------------------------------
+
+Step 35:
+Action: {'stock_idx': 28, 'size': array([ 1, 41]), 'position': (16, 34)}
+Step Reward: 1.711
+Current Filled Ratio: 0.290
+Step Waste: 9959
+Episode Total Reward: 42.132
+--------------------------------------------------
+
+Step 36:
+Action: {'stock_idx': 17, 'size': array([ 1, 41]), 'position': (31, 0)}
+Step Reward: 0.768
+Current Filled Ratio: 0.290
+Step Waste: 9590
+Episode Total Reward: 42.900
+--------------------------------------------------
+
+Step 37:
+Action: {'stock_idx': 50, 'size': array([ 1, 41]), 'position': (35, 27)}
+Step Reward: 1.303
+Current Filled Ratio: 0.300
+Step Waste: 9959
+Episode Total Reward: 44.203
+--------------------------------------------------
+
+Step 38:
+Action: {'stock_idx': 46, 'size': array([ 1, 41]), 'position': (0, 0)}
+Step Reward: 2.105
+Current Filled Ratio: 0.310
+Step Waste: 9959
+Episode Total Reward: 46.308
+--------------------------------------------------
+
+Step 39:
+Action: {'stock_idx': 66, 'size': array([ 1, 41]), 'position': (55, 46)}
+Step Reward: 0.898
+Current Filled Ratio: 0.320
+Step Waste: 9959
+Episode Total Reward: 47.206
+--------------------------------------------------
+
+Step 40:
+Action: {'stock_idx': 67, 'size': array([ 1, 41]), 'position': (0, 19)}
+Step Reward: 1.951
+Current Filled Ratio: 0.320
+Step Waste: 9590
+Episode Total Reward: 49.157
+--------------------------------------------------
+
+Step 41:
+Action: {'stock_idx': 68, 'size': array([ 2, 12]), 'position': (43, 45)}
+Step Reward: 0.320
+Current Filled Ratio: 0.320
+Step Waste: 9214
+Episode Total Reward: 49.476
+--------------------------------------------------
+
+Step 42:
+Action: {'stock_idx': 96, 'size': array([ 1, 41]), 'position': (12, 0)}
+Step Reward: 1.733
+Current Filled Ratio: 0.330
+Step Waste: 9959
+Episode Total Reward: 51.209
+--------------------------------------------------
+
+Step 43:
+Action: {'stock_idx': 82, 'size': array([ 2, 12]), 'position': (44, 38)}
+Step Reward: 0.355
+Current Filled Ratio: 0.330
+Step Waste: 9607
+Episode Total Reward: 51.564
+--------------------------------------------------
+
+Step 44:
+Action: {'stock_idx': 88, 'size': array([ 1, 41]), 'position': (10, 0)}
+Step Reward: 1.723
+Current Filled Ratio: 0.340
+Step Waste: 9959
+Episode Total Reward: 53.288
+--------------------------------------------------
+
+Step 45:
+Action: {'stock_idx': 53, 'size': array([ 1, 41]), 'position': (32, 33)}
+Step Reward: 1.296
+Current Filled Ratio: 0.350
+Step Waste: 9959
+Episode Total Reward: 54.584
+--------------------------------------------------
+
+Step 46:
+Action: {'stock_idx': 6, 'size': array([ 1, 41]), 'position': (0, 14)}
+Step Reward: 2.102
+Current Filled Ratio: 0.360
+Step Waste: 9959
+Episode Total Reward: 56.686
+--------------------------------------------------
+
+Step 47:
+Action: {'stock_idx': 30, 'size': array([ 1, 41]), 'position': (51, 0)}
+Step Reward: 0.769
+Current Filled Ratio: 0.360
+Step Waste: 9959
+Episode Total Reward: 57.455
+--------------------------------------------------
+
+Step 48:
+Action: {'stock_idx': 47, 'size': array([ 1, 41]), 'position': (77, 44)}
+Step Reward: 0.507
+Current Filled Ratio: 0.370
+Step Waste: 9959
+Episode Total Reward: 57.962
+--------------------------------------------------
+
+Step 49:
+Action: {'stock_idx': 76, 'size': array([ 1, 41]), 'position': (65, 24)}
+Step Reward: 0.514
+Current Filled Ratio: 0.380
+Step Waste: 9959
+Episode Total Reward: 58.476
+--------------------------------------------------
+
+Step 50:
+Action: {'stock_idx': 42, 'size': array([ 2, 12]), 'position': (37, 75)}
+Step Reward: 1.123
+Current Filled Ratio: 0.380
+Step Waste: 9470
+Episode Total Reward: 59.599
+--------------------------------------------------
+
+Step 51:
+Action: {'stock_idx': 59, 'size': array([ 1, 41]), 'position': (39, 38)}
+Step Reward: 0.894
+Current Filled Ratio: 0.390
+Step Waste: 9959
+Episode Total Reward: 60.492
+--------------------------------------------------
+
+Step 52:
+Action: {'stock_idx': 81, 'size': array([ 1, 41]), 'position': (16, 50)}
+Step Reward: 1.707
+Current Filled Ratio: 0.400
+Step Waste: 9959
+Episode Total Reward: 62.199
+--------------------------------------------------
+
+Step 53:
+Action: {'stock_idx': 46, 'size': array([ 1, 41]), 'position': (0, 47)}
+Step Reward: 1.944
+Current Filled Ratio: 0.400
+Step Waste: 9918
+Episode Total Reward: 64.143
+--------------------------------------------------
+
+Step 54:
+Action: {'stock_idx': 62, 'size': array([ 1, 41]), 'position': (31, 38)}
+Step Reward: 4.301
+Current Filled Ratio: 0.410
+Step Waste: 9959
+Episode Total Reward: 68.444
+--------------------------------------------------
+
+Step 55:
+Action: {'stock_idx': 95, 'size': array([ 1, 41]), 'position': (16, 24)}
+Step Reward: 1.699
+Current Filled Ratio: 0.420
+Step Waste: 9959
+Episode Total Reward: 70.143
+--------------------------------------------------
+
+Step 56:
+Action: {'stock_idx': 95, 'size': array([ 2, 12]), 'position': (64, 13)}
+Step Reward: 0.345
+Current Filled Ratio: 0.420
+Step Waste: 9935
+Episode Total Reward: 70.488
+--------------------------------------------------
+
+Step 57:
+Action: {'stock_idx': 35, 'size': array([ 2, 12]), 'position': (40, 0)}
+Step Reward: 0.930
+Current Filled Ratio: 0.430
+Step Waste: 9976
+Episode Total Reward: 71.418
+--------------------------------------------------
+
+Step 58:
+Action: {'stock_idx': 24, 'size': array([ 2, 12]), 'position': (38, 0)}
+Step Reward: 1.304
+Current Filled Ratio: 0.440
+Step Waste: 9976
+Episode Total Reward: 72.722
+--------------------------------------------------
+
+Step 59:
+Action: {'stock_idx': 53, 'size': array([ 2, 12]), 'position': (64, 29)}
+Step Reward: 0.335
+Current Filled Ratio: 0.440
+Step Waste: 9935
+Episode Total Reward: 73.057
+--------------------------------------------------
+
+Step 60:
+Action: {'stock_idx': 26, 'size': array([ 2, 12]), 'position': (16, 62)}
+Step Reward: 1.514
+Current Filled Ratio: 0.440
+Step Waste: 9607
+Episode Total Reward: 74.571
+--------------------------------------------------
+
+Step 61:
+Action: {'stock_idx': 66, 'size': array([ 2, 12]), 'position': (0, 69)}
+Step Reward: 1.919
+Current Filled Ratio: 0.440
+Step Waste: 9935
+Episode Total Reward: 76.490
+--------------------------------------------------
+
+Step 62:
+Action: {'stock_idx': 54, 'size': array([ 2, 12]), 'position': (80, 32)}
+Step Reward: 3.337
+Current Filled Ratio: 0.440
+Step Waste: 9607
+Episode Total Reward: 79.827
+--------------------------------------------------
+
+Step 63:
+Action: {'stock_idx': 65, 'size': array([ 2, 12]), 'position': (36, 30)}
+Step Reward: 1.295
+Current Filled Ratio: 0.450
+Step Waste: 9976
+Episode Total Reward: 81.122
+--------------------------------------------------
+
+Step 64:
+Action: {'stock_idx': 51, 'size': array([41, 26]), 'position': (11, 45)}
+Step Reward: 1.154
+Current Filled Ratio: 0.460
+Step Waste: 8934
+Episode Total Reward: 82.276
+--------------------------------------------------
+
+Step 65:
+Action: {'stock_idx': 10, 'size': array([14, 28]), 'position': (16, 13)}
+Step Reward: 1.714
+Current Filled Ratio: 0.470
+Step Waste: 9608
+Episode Total Reward: 83.989
+--------------------------------------------------
+
+Step 66:
+Action: {'stock_idx': 63, 'size': array([14, 28]), 'position': (13, 60)}
+Step Reward: 1.539
+Current Filled Ratio: 0.480
+Step Waste: 9608
+Episode Total Reward: 85.529
+--------------------------------------------------
+
+Step 67:
+Action: {'stock_idx': 3, 'size': array([14, 28]), 'position': (48, 54)}
+Step Reward: 3.764
+Current Filled Ratio: 0.490
+Step Waste: 9608
+Episode Total Reward: 89.293
+--------------------------------------------------
+
+Step 68:
+Action: {'stock_idx': 84, 'size': array([14, 28]), 'position': (39, 0)}
+Step Reward: 1.380
+Current Filled Ratio: 0.500
+Step Waste: 9608
+Episode Total Reward: 90.673
+--------------------------------------------------
+
+Step 69:
+Action: {'stock_idx': 0, 'size': array([47,  6]), 'position': (16, 28)}
+Step Reward: 1.262
+Current Filled Ratio: 0.500
+Step Waste: 9349
+Episode Total Reward: 91.935
+--------------------------------------------------
+
+Step 70:
+Action: {'stock_idx': 39, 'size': array([47,  6]), 'position': (14, 19)}
+Step Reward: 1.362
+Current Filled Ratio: 0.500
+Step Waste: 9349
+Episode Total Reward: 93.297
+--------------------------------------------------
+
+Step 71:
+Action: {'stock_idx': 48, 'size': array([47,  6]), 'position': (35, 35)}
+Step Reward: 0.628
+Current Filled Ratio: 0.510
+Step Waste: 9718
+Episode Total Reward: 93.925
+--------------------------------------------------
+
+Step 72:
+Action: {'stock_idx': 44, 'size': array([47,  6]), 'position': (45, 10)}
+Step Reward: 0.990
+Current Filled Ratio: 0.520
+Step Waste: 9718
+Episode Total Reward: 94.914
+--------------------------------------------------
+
+Step 73:
+Action: {'stock_idx': 18, 'size': array([47,  6]), 'position': (47, 56)}
+Step Reward: 3.538
+Current Filled Ratio: 0.530
+Step Waste: 9718
+Episode Total Reward: 98.452
+--------------------------------------------------
+
+Step 74:
+Action: {'stock_idx': 63, 'size': array([47,  6]), 'position': (13, 40)}
+Step Reward: 1.071
+Current Filled Ratio: 0.530
+Step Waste: 9326
+Episode Total Reward: 99.523
+--------------------------------------------------
+
+Step 75:
+Action: {'stock_idx': 51, 'size': array([42,  1]), 'position': (17, 30)}
+Step Reward: 0.822
+Current Filled Ratio: 0.530
+Step Waste: 8892
+Episode Total Reward: 100.345
+--------------------------------------------------
+
+Step 76:
+Action: {'stock_idx': 43, 'size': array([44, 17]), 'position': (19, 0)}
+Step Reward: 1.668
+Current Filled Ratio: 0.530
+Step Waste: 8746
+Episode Total Reward: 102.013
+--------------------------------------------------
+
+Step 77:
+Action: {'stock_idx': 19, 'size': array([ 4, 36]), 'position': (19, 39)}
+Step Reward: 1.692
+Current Filled Ratio: 0.540
+Step Waste: 9856
+Episode Total Reward: 103.704
+--------------------------------------------------
+
+Step 78:
+Action: {'stock_idx': 40, 'size': array([ 4, 36]), 'position': (24, 36)}
+Step Reward: 1.138
+Current Filled Ratio: 0.540
+Step Waste: 9666
+Episode Total Reward: 104.843
+--------------------------------------------------
+
+Step 79:
+Action: {'stock_idx': 95, 'size': array([44, 17]), 'position': (16, 0)}
+Step Reward: 1.701
+Current Filled Ratio: 0.540
+Step Waste: 9187
+Episode Total Reward: 106.544
+--------------------------------------------------
+
+Step 80:
+Action: {'stock_idx': 23, 'size': array([ 4, 36]), 'position': (17, 0)}
+Step Reward: 1.727
+Current Filled Ratio: 0.550
+Step Waste: 9856
+Episode Total Reward: 108.271
+--------------------------------------------------
+
+Step 81:
+Action: {'stock_idx': 78, 'size': array([ 4, 36]), 'position': (74, 14)}
+Step Reward: 0.514
+Current Filled Ratio: 0.560
+Step Waste: 9856
+Episode Total Reward: 108.785
+--------------------------------------------------
+
+Step 82:
+Action: {'stock_idx': 80, 'size': array([ 4, 36]), 'position': (58, 15)}
+Step Reward: 3.910
+Current Filled Ratio: 0.570
+Step Waste: 9856
+Episode Total Reward: 112.696
+--------------------------------------------------
+
+Step 83:
+Action: {'stock_idx': 38, 'size': array([ 4, 36]), 'position': (66, 15)}
+Step Reward: 0.514
+Current Filled Ratio: 0.580
+Step Waste: 9856
+Episode Total Reward: 113.210
+--------------------------------------------------
+
+Step 84:
+Action: {'stock_idx': 15, 'size': array([44, 17]), 'position': (13, 0)}
+Step Reward: 1.707
+Current Filled Ratio: 0.580
+Step Waste: 8883
+Episode Total Reward: 114.917
+--------------------------------------------------
+
+Step 85:
+Action: {'stock_idx': 23, 'size': array([44, 17]), 'position': (17, 77)}
+Step Reward: 0.849
+Current Filled Ratio: 0.580
+Step Waste: 9108
+Episode Total Reward: 115.766
+--------------------------------------------------
+
+Step 86:
+Action: {'stock_idx': 38, 'size': array([44, 17]), 'position': (16, 31)}
+Step Reward: 1.268
+Current Filled Ratio: 0.580
+Step Waste: 9108
+Episode Total Reward: 117.035
+--------------------------------------------------
+
+Step 87:
+Action: {'stock_idx': 91, 'size': array([44, 17]), 'position': (44, 72)}
+Step Reward: 0.257
+Current Filled Ratio: 0.580
+Step Waste: 8705
+Episode Total Reward: 117.292
+--------------------------------------------------
+
+Step 88:
+Action: {'stock_idx': 38, 'size': array([42,  1]), 'position': (41, 0)}
+Step Reward: 0.969
+Current Filled Ratio: 0.580
+Step Waste: 9066
+Episode Total Reward: 118.260
+--------------------------------------------------
+
+Step 89:
+Action: {'stock_idx': 20, 'size': array([44, 17]), 'position': (55, 0)}
+Step Reward: 1.074
+Current Filled Ratio: 0.590
+Step Waste: 9252
+Episode Total Reward: 119.334
+--------------------------------------------------
+
+Step 90:
+Action: {'stock_idx': 87, 'size': array([44, 17]), 'position': (0, 40)}
+Step Reward: 1.405
+Current Filled Ratio: 0.600
+Step Waste: 9252
+Episode Total Reward: 120.739
+--------------------------------------------------
+
+Step 91:
+Action: {'stock_idx': 24, 'size': array([44, 17]), 'position': (0, 56)}
+Step Reward: 1.353
+Current Filled Ratio: 0.600
+Step Waste: 9228
+Episode Total Reward: 122.092
+--------------------------------------------------
+
+Step 92:
+Action: {'stock_idx': 17, 'size': array([10, 45]), 'position': (41, 16)}
+Step Reward: 0.408
+Current Filled Ratio: 0.600
+Step Waste: 9140
+Episode Total Reward: 122.500
+--------------------------------------------------
+
+Step 93:
+Action: {'stock_idx': 19, 'size': array([44, 17]), 'position': (53, 19)}
+Step Reward: 0.765
+Current Filled Ratio: 0.600
+Step Waste: 9108
+Episode Total Reward: 123.265
+--------------------------------------------------
+
+Step 94:
+Action: {'stock_idx': 53, 'size': array([10, 45]), 'position': (0, 29)}
+Step Reward: 4.932
+Current Filled Ratio: 0.600
+Step Waste: 9485
+Episode Total Reward: 128.197
+--------------------------------------------------
+
+Step 95:
+Action: {'stock_idx': 10, 'size': array([10, 45]), 'position': (0, 22)}
+Step Reward: 1.956
+Current Filled Ratio: 0.600
+Step Waste: 9158
+Episode Total Reward: 130.153
+--------------------------------------------------
+
+Step 96:
+Action: {'stock_idx': 24, 'size': array([44, 17]), 'position': (19, 29)}
+Step Reward: 1.295
+Current Filled Ratio: 0.600
+Step Waste: 8480
+Episode Total Reward: 131.448
+--------------------------------------------------
+
+Step 97:
+Action: {'stock_idx': 7, 'size': array([44, 17]), 'position': (56, 18)}
+Step Reward: 0.894
+Current Filled Ratio: 0.610
+Step Waste: 9252
+Episode Total Reward: 132.342
+--------------------------------------------------
+
+Step 98:
+Action: {'stock_idx': 90, 'size': array([44, 17]), 'position': (0, 15)}
+Step Reward: 2.023
+Current Filled Ratio: 0.620
+Step Waste: 9252
+Episode Total Reward: 134.365
+--------------------------------------------------
+
+Step 99:
+Action: {'stock_idx': 90, 'size': array([44, 17]), 'position': (46, 46)}
+Step Reward: 0.457
+Current Filled Ratio: 0.620
+Step Waste: 8504
+Episode Total Reward: 134.822
+--------------------------------------------------
+
+Step 100:
+Action: {'stock_idx': 55, 'size': array([44, 17]), 'position': (7, 0)}
+Step Reward: 1.991
+Current Filled Ratio: 0.630
+Step Waste: 9252
+Episode Total Reward: 136.813
+--------------------------------------------------
+
+Step 101:
+Action: {'stock_idx': 92, 'size': array([44, 17]), 'position': (0, 50)}
+Step Reward: 1.358
+Current Filled Ratio: 0.640
+Step Waste: 9252
+Episode Total Reward: 138.171
+--------------------------------------------------
+
+Step 102:
+Action: {'stock_idx': 9, 'size': array([44, 17]), 'position': (9, 52)}
+Step Reward: 3.798
+Current Filled Ratio: 0.640
+Step Waste: 8883
+Episode Total Reward: 141.969
+--------------------------------------------------
+
+Step 103:
+Action: {'stock_idx': 23, 'size': array([8, 6]), 'position': (69, 77)}
+Step Reward: 0.224
+Current Filled Ratio: 0.640
+Step Waste: 9060
+Episode Total Reward: 142.192
+--------------------------------------------------
+
+Step 104:
+Action: {'stock_idx': 69, 'size': array([44, 17]), 'position': (52, 29)}
+Step Reward: 0.765
+Current Filled Ratio: 0.650
+Step Waste: 9252
+Episode Total Reward: 142.957
+--------------------------------------------------
+
+Step 105:
+Action: {'stock_idx': 13, 'size': array([33, 18]), 'position': (0, 12)}
+Step Reward: 1.912
+Current Filled Ratio: 0.650
+Step Waste: 9037
+Episode Total Reward: 144.869
+--------------------------------------------------
+
+Step 106:
+Action: {'stock_idx': 84, 'size': array([33, 18]), 'position': (65, 22)}
+Step Reward: 0.470
+Current Filled Ratio: 0.650
+Step Waste: 9014
+Episode Total Reward: 145.339
+--------------------------------------------------
+
+Step 107:
+Action: {'stock_idx': 24, 'size': array([33, 18]), 'position': (62, 0)}
+Step Reward: 0.735
+Current Filled Ratio: 0.650
+Step Waste: 7886
+Episode Total Reward: 146.074
+--------------------------------------------------
+
+Step 108:
+Action: {'stock_idx': 25, 'size': array([33, 18]), 'position': (21, 0)}
+Step Reward: 1.320
+Current Filled Ratio: 0.650
+Step Waste: 9216
+Episode Total Reward: 147.394
+--------------------------------------------------
+
+Step 109:
+Action: {'stock_idx': 98, 'size': array([33, 18]), 'position': (22, 0)}
+Step Reward: 1.451
+Current Filled Ratio: 0.660
+Step Waste: 9406
+Episode Total Reward: 148.845
+--------------------------------------------------
+
+Step 110:
+Action: {'stock_idx': 76, 'size': array([33, 18]), 'position': (0, 0)}
+Step Reward: 2.067
+Current Filled Ratio: 0.660
+Step Waste: 9365
+Episode Total Reward: 150.912
+--------------------------------------------------
+
+Step 111:
+Action: {'stock_idx': 53, 'size': array([33, 18]), 'position': (16, 14)}
+Step Reward: 1.499
+Current Filled Ratio: 0.660
+Step Waste: 8891
+Episode Total Reward: 152.412
+--------------------------------------------------
+
+Step 112:
+Action: {'stock_idx': 89, 'size': array([33, 18]), 'position': (33, 61)}
+Step Reward: 0.447
+Current Filled Ratio: 0.670
+Step Waste: 9406
+Episode Total Reward: 152.859
+--------------------------------------------------
+
+Step 113:
+Action: {'stock_idx': 5, 'size': array([33, 18]), 'position': (63, 36)}
+Step Reward: 0.299
+Current Filled Ratio: 0.670
+Step Waste: 8900
+Episode Total Reward: 153.158
+--------------------------------------------------
+
+Step 114:
+Action: {'stock_idx': 34, 'size': array([33, 18]), 'position': (13, 0)}
+Step Reward: 1.871
+Current Filled Ratio: 0.680
+Step Waste: 9406
+Episode Total Reward: 155.029
+--------------------------------------------------
+
+Step 115:
+Action: {'stock_idx': 0, 'size': array([33, 18]), 'position': (61, 4)}
+Step Reward: 0.761
+Current Filled Ratio: 0.680
+Step Waste: 8755
+Episode Total Reward: 155.790
+--------------------------------------------------
+
+Step 116:
+Action: {'stock_idx': 2, 'size': array([33, 18]), 'position': (34, 0)}
+Step Reward: 1.394
+Current Filled Ratio: 0.690
+Step Waste: 9406
+Episode Total Reward: 157.184
+--------------------------------------------------
+
+Step 117:
+Action: {'stock_idx': 62, 'size': array([33, 18]), 'position': (45, 19)}
+Step Reward: 0.711
+Current Filled Ratio: 0.690
+Step Waste: 9365
+Episode Total Reward: 157.895
+--------------------------------------------------
+
+Step 118:
+Action: {'stock_idx': 75, 'size': array([33, 18]), 'position': (0, 0)}
+Step Reward: 2.189
+Current Filled Ratio: 0.700
+Step Waste: 9406
+Episode Total Reward: 160.084
+--------------------------------------------------
+
+Step 119:
+Action: {'stock_idx': 0, 'size': array([33, 18]), 'position': (5, 8)}
+Step Reward: 4.863
+Current Filled Ratio: 0.700
+Step Waste: 8161
+Episode Total Reward: 164.947
+--------------------------------------------------
+
+Step 120:
+Action: {'stock_idx': 56, 'size': array([33, 18]), 'position': (58, 22)}
+Step Reward: 0.768
+Current Filled Ratio: 0.710
+Step Waste: 9406
+Episode Total Reward: 165.715
+--------------------------------------------------
+
+Step 121:
+Action: {'stock_idx': 61, 'size': array([42,  1]), 'position': (20, 12)}
+Step Reward: 1.196
+Current Filled Ratio: 0.720
+Step Waste: 9958
+Episode Total Reward: 166.911
+--------------------------------------------------
+
+Step 122:
+Action: {'stock_idx': 57, 'size': array([42,  1]), 'position': (0, 0)}
+Step Reward: 4.961
+Current Filled Ratio: 0.720
+Step Waste: 9589
+Episode Total Reward: 171.872
+--------------------------------------------------
+
+Step 123:
+Action: {'stock_idx': 41, 'size': array([42,  1]), 'position': (19, 0)}
+Step Reward: 1.488
+Current Filled Ratio: 0.730
+Step Waste: 9958
+Episode Total Reward: 173.360
+--------------------------------------------------
+
+Step 124:
+Action: {'stock_idx': 0, 'size': array([8, 6]), 'position': (13, 56)}
+Step Reward: 1.554
+Current Filled Ratio: 0.730
+Step Waste: 8113
+Episode Total Reward: 174.914
+--------------------------------------------------
+
+Step 125:
+Action: {'stock_idx': 35, 'size': array([8, 6]), 'position': (0, 0)}
+Step Reward: 1.964
+Current Filled Ratio: 0.730
+Step Waste: 9928
+Episode Total Reward: 176.878
+--------------------------------------------------
+
+Step 126:
+Action: {'stock_idx': 69, 'size': array([8, 6]), 'position': (19, 0)}
+Step Reward: 1.561
+Current Filled Ratio: 0.730
+Step Waste: 9204
+Episode Total Reward: 178.439
+--------------------------------------------------
+
+Step 127:
+Action: {'stock_idx': 12, 'size': array([8, 6]), 'position': (48, 32)}
+Step Reward: 0.434
+Current Filled Ratio: 0.740
+Step Waste: 9952
+Episode Total Reward: 178.873
+--------------------------------------------------
+
+Step 128:
+Action: {'stock_idx': 41, 'size': array([8, 6]), 'position': (12, 25)}
+Step Reward: 1.467
+Current Filled Ratio: 0.740
+Step Waste: 9910
+Episode Total Reward: 180.340
+--------------------------------------------------
+
+Step 129:
+Action: {'stock_idx': 93, 'size': array([8, 6]), 'position': (59, 10)}
+Step Reward: 3.888
+Current Filled Ratio: 0.750
+Step Waste: 9952
+Episode Total Reward: 184.228
+--------------------------------------------------
+
+Step 130:
+Action: {'stock_idx': 0, 'size': array([8, 6]), 'position': (77, 53)}
+Step Reward: 0.255
+Current Filled Ratio: 0.750
+Step Waste: 8065
+Episode Total Reward: 184.483
+--------------------------------------------------
+
+Step 131:
+Action: {'stock_idx': 0, 'size': array([37,  5]), 'position': (26, 37)}
+Step Reward: 1.026
+Current Filled Ratio: 0.750
+Step Waste: 7880
+Episode Total Reward: 185.509
+--------------------------------------------------
+
+Step 132:
+Action: {'stock_idx': 82, 'size': array([37,  5]), 'position': (19, 76)}
+Step Reward: 0.261
+Current Filled Ratio: 0.750
+Step Waste: 9422
+Episode Total Reward: 185.770
+--------------------------------------------------
+
+Step 133:
+Action: {'stock_idx': 83, 'size': array([37,  5]), 'position': (14, 43)}
+Step Reward: 1.107
+Current Filled Ratio: 0.760
+Step Waste: 9815
+Episode Total Reward: 186.878
+--------------------------------------------------
+
+Step 134:
+Action: {'stock_idx': 0, 'size': array([37,  5]), 'position': (30, 53)}
+Step Reward: 0.761
+Current Filled Ratio: 0.760
+Step Waste: 7695
+Episode Total Reward: 187.639
+--------------------------------------------------
+
+Step 135:
+Action: {'stock_idx': 75, 'size': array([37,  5]), 'position': (0, 60)}
+Step Reward: 1.341
+Current Filled Ratio: 0.760
+Step Waste: 9221
+Episode Total Reward: 188.980
+--------------------------------------------------
+
+Step 136:
+Action: {'stock_idx': 96, 'size': array([37,  5]), 'position': (25, 33)}
+Step Reward: 0.751
+Current Filled Ratio: 0.760
+Step Waste: 9774
+Episode Total Reward: 189.731
+--------------------------------------------------
+
+Step 137:
+Action: {'stock_idx': 59, 'size': array([10, 37]), 'position': (26, 42)}
+Step Reward: 1.062
+Current Filled Ratio: 0.760
+Step Waste: 9589
+Episode Total Reward: 190.793
+--------------------------------------------------
+
+Step 138:
+Action: {'stock_idx': 0, 'size': array([37,  5]), 'position': (0, 0)}
+Step Reward: 1.980
+Current Filled Ratio: 0.760
+Step Waste: 7510
+Episode Total Reward: 192.773
+--------------------------------------------------
+
+Step 139:
+Action: {'stock_idx': 95, 'size': array([37,  5]), 'position': (43, 39)}
+Step Reward: 0.357
+Current Filled Ratio: 0.760
+Step Waste: 9002
+Episode Total Reward: 193.130
+--------------------------------------------------
+
+Step 140:
+Action: {'stock_idx': 1, 'size': array([37,  5]), 'position': (8, 7)}
+Step Reward: 1.888
+Current Filled Ratio: 0.770
+Step Waste: 9815
+Episode Total Reward: 195.019
+--------------------------------------------------
+
+Step 141:
+Action: {'stock_idx': 59, 'size': array([37,  5]), 'position': (13, 31)}
+Step Reward: 1.141
+Current Filled Ratio: 0.770
+Step Waste: 9404
+Episode Total Reward: 196.160
+--------------------------------------------------
+
+Step 142:
+Action: {'stock_idx': 31, 'size': array([37,  5]), 'position': (11, 54)}
+Step Reward: 0.683
+Current Filled Ratio: 0.780
+Step Waste: 9815
+Episode Total Reward: 196.843
+--------------------------------------------------
+
+Step 143:
+Action: {'stock_idx': 0, 'size': array([10, 37]), 'position': (87, 25)}
+Step Reward: 0.157
+Current Filled Ratio: 0.780
+Step Waste: 7140
+Episode Total Reward: 197.001
+--------------------------------------------------
+
+Step 144:
+Action: {'stock_idx': 33, 'size': array([37,  5]), 'position': (38, 12)}
+Step Reward: 3.937
+Current Filled Ratio: 0.790
+Step Waste: 9815
+Episode Total Reward: 200.938
+--------------------------------------------------
+
+Step 145:
+Action: {'stock_idx': 88, 'size': array([37,  5]), 'position': (14, 33)}
+Step Reward: 0.600
+Current Filled Ratio: 0.790
+Step Waste: 9774
+Episode Total Reward: 201.538
+--------------------------------------------------
+
+Step 146:
+Action: {'stock_idx': 1, 'size': array([10, 37]), 'position': (27, 21)}
+Step Reward: 1.366
+Current Filled Ratio: 0.790
+Step Waste: 9445
+Episode Total Reward: 202.903
+--------------------------------------------------
+
+Step 147:
+Action: {'stock_idx': 55, 'size': array([10, 37]), 'position': (0, 55)}
+Step Reward: 1.800
+Current Filled Ratio: 0.790
+Step Waste: 8882
+Episode Total Reward: 204.703
+--------------------------------------------------
+
+Step 148:
+Action: {'stock_idx': 46, 'size': array([10, 37]), 'position': (19, 51)}
+Step Reward: 4.489
+Current Filled Ratio: 0.790
+Step Waste: 9548
+Episode Total Reward: 209.192
+--------------------------------------------------
+
+Step 149:
+Action: {'stock_idx': 8, 'size': array([10, 37]), 'position': (0, 19)}
+Step Reward: 2.101
+Current Filled Ratio: 0.800
+Step Waste: 9630
+Episode Total Reward: 211.293
+--------------------------------------------------
+
+Step 150:
+Action: {'stock_idx': 68, 'size': array([33,  8]), 'position': (10, 30)}
+Step Reward: 1.165
+Current Filled Ratio: 0.800
+Step Waste: 8950
+Episode Total Reward: 212.458
+--------------------------------------------------
+
+Step 151:
+Action: {'stock_idx': 1, 'size': array([17, 49]), 'position': (44, 34)}
+Step Reward: 0.969
+Current Filled Ratio: 0.800
+Step Waste: 8612
+Episode Total Reward: 213.427
+--------------------------------------------------
+
+Step 152:
+Action: {'stock_idx': 1, 'size': array([17, 49]), 'position': (62, 28)}
+Step Reward: 0.607
+Current Filled Ratio: 0.800
+Step Waste: 7779
+Episode Total Reward: 214.035
+--------------------------------------------------
+
+Step 153:
+Action: {'stock_idx': 3, 'size': array([17, 49]), 'position': (16, 36)}
+Step Reward: 1.507
+Current Filled Ratio: 0.800
+Step Waste: 8775
+Episode Total Reward: 215.542
+--------------------------------------------------
+
+Step 154:
+Action: {'stock_idx': 2, 'size': array([17, 49]), 'position': (32, 19)}
+Step Reward: 1.242
+Current Filled Ratio: 0.800
+Step Waste: 8573
+Episode Total Reward: 216.784
+--------------------------------------------------
+
+Step 155:
+Action: {'stock_idx': 84, 'size': array([33,  8]), 'position': (58, 11)}
+Step Reward: 0.683
+Current Filled Ratio: 0.800
+Step Waste: 8750
+Episode Total Reward: 217.467
+--------------------------------------------------
+
+Step 156:
+Action: {'stock_idx': 85, 'size': array([17, 49]), 'position': (73, 17)}
+Step Reward: 0.550
+Current Filled Ratio: 0.810
+Step Waste: 9167
+Episode Total Reward: 218.016
+--------------------------------------------------
+
+Step 157:
+Action: {'stock_idx': 28, 'size': array([17, 49]), 'position': (49, 38)}
+Step Reward: 0.711
+Current Filled Ratio: 0.810
+Step Waste: 9126
+Episode Total Reward: 218.728
+--------------------------------------------------
+
+Step 158:
+Action: {'stock_idx': 56, 'size': array([17, 49]), 'position': (19, 8)}
+Step Reward: 1.670
+Current Filled Ratio: 0.810
+Step Waste: 8573
+Episode Total Reward: 220.398
+--------------------------------------------------
+
+Step 159:
+Action: {'stock_idx': 79, 'size': array([17, 49]), 'position': (13, 0)}
+Step Reward: 1.930
+Current Filled Ratio: 0.820
+Step Waste: 9167
+Episode Total Reward: 222.328
+--------------------------------------------------
+
+Step 160:
+Action: {'stock_idx': 92, 'size': array([17, 49]), 'position': (11, 0)}
+Step Reward: 4.750
+Current Filled Ratio: 0.820
+Step Waste: 8419
+Episode Total Reward: 227.078
+--------------------------------------------------
+
+Step 161:
+Action: {'stock_idx': 72, 'size': array([17, 49]), 'position': (58, 0)}
+Step Reward: 1.039
+Current Filled Ratio: 0.830
+Step Waste: 9167
+Episode Total Reward: 228.116
+--------------------------------------------------
+
+Step 162:
+Action: {'stock_idx': 1, 'size': array([33,  8]), 'position': (45, 19)}
+Step Reward: 0.863
+Current Filled Ratio: 0.830
+Step Waste: 7515
+Episode Total Reward: 228.979
+--------------------------------------------------
+
+Step 163:
+Action: {'stock_idx': 45, 'size': array([33,  8]), 'position': (0, 0)}
+Step Reward: 2.140
+Current Filled Ratio: 0.840
+Step Waste: 9736
+Episode Total Reward: 231.119
+--------------------------------------------------
+
+Step 164:
+Action: {'stock_idx': 96, 'size': array([33,  8]), 'position': (12, 67)}
+Step Reward: 0.804
+Current Filled Ratio: 0.840
+Step Waste: 9510
+Episode Total Reward: 231.923
+--------------------------------------------------
+
+Step 165:
+Action: {'stock_idx': 1, 'size': array([33,  8]), 'position': (3, 64)}
+Step Reward: 1.403
+Current Filled Ratio: 0.840
+Step Waste: 7251
+Episode Total Reward: 233.327
+--------------------------------------------------
+
+Step 166:
+Action: {'stock_idx': 2, 'size': array([33,  8]), 'position': (16, 75)}
+Step Reward: 1.017
+Current Filled Ratio: 0.840
+Step Waste: 8309
+Episode Total Reward: 234.343
+--------------------------------------------------
+
+Step 167:
+Action: {'stock_idx': 2, 'size': array([33,  8]), 'position': (43, 84)}
+Step Reward: 0.324
+Current Filled Ratio: 0.840
+Step Waste: 8045
+Episode Total Reward: 234.668
+--------------------------------------------------
+
+Step 168:
+Action: {'stock_idx': 61, 'size': array([33,  8]), 'position': (12, 24)}
+Step Reward: 1.212
+Current Filled Ratio: 0.840
+Step Waste: 9694
+Episode Total Reward: 235.879
+--------------------------------------------------
+
+Step 169:
+Action: {'stock_idx': 1, 'size': array([33,  8]), 'position': (50, 1)}
+Step Reward: 0.901
+Current Filled Ratio: 0.840
+Step Waste: 6987
+Episode Total Reward: 236.780
+--------------------------------------------------
+
+Step 170:
+Action: {'stock_idx': 14, 'size': array([33,  8]), 'position': (0, 0)}
+Step Reward: 2.150
+Current Filled Ratio: 0.850
+Step Waste: 9736
+Episode Total Reward: 238.930
+--------------------------------------------------
+
+Step 171:
+Action: {'stock_idx': 32, 'size': array([33,  8]), 'position': (49, 48)}
+Step Reward: 0.464
+Current Filled Ratio: 0.860
+Step Waste: 9736
+Episode Total Reward: 239.394
+--------------------------------------------------
+
+Step 172:
+Action: {'stock_idx': 49, 'size': array([33,  8]), 'position': (0, 51)}
+Step Reward: 1.369
+Current Filled Ratio: 0.870
+Step Waste: 9736
+Episode Total Reward: 240.763
+--------------------------------------------------
+
+Step 173:
+Action: {'stock_idx': 23, 'size': array([33,  8]), 'position': (0, 58)}
+Step Reward: 1.529
+Current Filled Ratio: 0.870
+Step Waste: 8796
+Episode Total Reward: 242.292
+--------------------------------------------------
+
+Step 174:
+Action: {'stock_idx': 2, 'size': array([34, 32]), 'position': (49, 24)}
+Step Reward: 0.764
+Current Filled Ratio: 0.870
+Step Waste: 6957
+Episode Total Reward: 243.056
+--------------------------------------------------
+
+Step 175:
+Action: {'stock_idx': 52, 'size': array([33,  8]), 'position': (62, 0)}
+Step Reward: 3.842
+Current Filled Ratio: 0.880
+Step Waste: 9736
+Episode Total Reward: 246.898
+--------------------------------------------------
+
+Step 176:
+Action: {'stock_idx': 52, 'size': array([33,  8]), 'position': (0, 37)}
+Step Reward: 1.582
+Current Filled Ratio: 0.880
+Step Waste: 9472
+Episode Total Reward: 248.481
+--------------------------------------------------
+
+Step 177:
+Action: {'stock_idx': 99, 'size': array([35, 36]), 'position': (0, 22)}
+Step Reward: 2.034
+Current Filled Ratio: 0.890
+Step Waste: 8740
+Episode Total Reward: 250.515
+--------------------------------------------------
+
+Step 178:
+Action: {'stock_idx': 3, 'size': array([34, 32]), 'position': (14, 1)}
+Step Reward: 1.752
+Current Filled Ratio: 0.890
+Step Waste: 7687
+Episode Total Reward: 252.267
+--------------------------------------------------
+
+Step 179:
+Action: {'stock_idx': 4, 'size': array([35, 36]), 'position': (4, 20)}
+Step Reward: 1.823
+Current Filled Ratio: 0.890
+Step Waste: 8234
+Episode Total Reward: 254.090
+--------------------------------------------------
+
+Step 180:
+Action: {'stock_idx': 4, 'size': array([35, 36]), 'position': (8, 60)}
+Step Reward: 1.297
+Current Filled Ratio: 0.890
+Step Waste: 6974
+Episode Total Reward: 255.387
+--------------------------------------------------
+
+Step 181:
+Action: {'stock_idx': 32, 'size': array([34, 32]), 'position': (32, 16)}
+Step Reward: 1.178
+Current Filled Ratio: 0.890
+Step Waste: 8648
+Episode Total Reward: 256.564
+--------------------------------------------------
+
+Step 182:
+Action: {'stock_idx': 5, 'size': array([35, 36]), 'position': (57, 0)}
+Step Reward: 1.018
+Current Filled Ratio: 0.890
+Step Waste: 7640
+Episode Total Reward: 257.582
+--------------------------------------------------
+
+Step 183:
+Action: {'stock_idx': 67, 'size': array([35, 36]), 'position': (23, 19)}
+Step Reward: 4.169
+Current Filled Ratio: 0.890
+Step Waste: 8330
+Episode Total Reward: 261.751
+--------------------------------------------------
+
+Step 184:
+Action: {'stock_idx': 11, 'size': array([35, 36]), 'position': (0, 51)}
+Step Reward: 1.822
+Current Filled Ratio: 0.900
+Step Waste: 8740
+Episode Total Reward: 263.573
+--------------------------------------------------
+
+Step 185:
+Action: {'stock_idx': 6, 'size': array([34, 32]), 'position': (7, 35)}
+Step Reward: 1.624
+Current Filled Ratio: 0.900
+Step Waste: 8871
+Episode Total Reward: 265.198
+--------------------------------------------------
+
+Step 186:
+Action: {'stock_idx': 6, 'size': array([34, 32]), 'position': (47, 13)}
+Step Reward: 5.998
+Current Filled Ratio: 0.900
+Step Waste: 7783
+Episode Total Reward: 271.195
+--------------------------------------------------
+
+Step 187:
+Action: {'stock_idx': 48, 'size': array([34, 32]), 'position': (0, 0)}
+Step Reward: 2.186
+Current Filled Ratio: 0.900
+Step Waste: 8630
+Episode Total Reward: 273.382
+--------------------------------------------------
+
+==================== Episode 1 Quality Report ====================
+Steps: 187
+Filled Ratio: 0.900
+Total Waste: 825923
+Number of Stocks Used: 90
+Waste per Stock: 9176.9
+Total Reward: 273.38
+======================================================================

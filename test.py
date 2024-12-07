@@ -14,7 +14,7 @@ env = gym.make(
 
 # Initialize policy and load saved model
 policy = ProximalPolicyOptimization()
-model_loaded = policy.load_model("model_ppo_best.pt")  # hoặc model khác như model_ppo_step_100.pt
+model_loaded = policy.load_model("/Users/albuscorleone/Documents/Schoolwork/Major/Mathematical Modelling/Assignment/MM241-private/saved_models/model_ppo_best.pt")  # hoặc model khác như model_ppo_step_100.pt
 
 
 if not model_loaded:

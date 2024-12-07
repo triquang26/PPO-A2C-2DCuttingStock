@@ -166,24 +166,28 @@ def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
                 observation = next_observation
                 step += 1
                 total_steps += 1
-                
-                # Save model periodically
-                if total_steps % save_interval == 0:
-                    log_info(f"\nSaving model at step {total_steps}...")
-                    policy.save_model(f"model_ppo_step_{total_steps}")
 
                 if terminated or truncated:
-                    policy.log_episode_summary(
-                        steps=step,
-                        filled_ratio=info['filled_ratio'],
-                        episode_reward=episode_reward,
-                        observation=observation
-                    )
+                    # Only log if all products have been processed
+                    remaining_products = sum(prod["quantity"] for prod in observation["products"])
+                    if remaining_products == 0:
+                        policy.log_episode_summary(
+                            steps=step,
+                            filled_ratio=info['filled_ratio'],
+                            episode_reward=episode_reward,
+                            observation=observation
+                        )
                     
+                    # Save model if it's the best so far
                     if episode_reward > best_reward:
                         best_reward = episode_reward
                         log_info("\nNew best reward achieved! Saving model...")
                         policy.save_model("model_ppo_best")
+                    
+                    # Save model every 10 episodes
+                    if ep > 0 and ep % 10 == 0:
+                        log_info(f"\nSaving model at episode {ep}...")
+                        policy.save_model(f"model_ppo_episode_{ep}")
                     
                     observation, info = env.reset(seed=ep)
                     ep += 1
@@ -194,7 +198,7 @@ def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
                 log_info("\nRunning evaluation phase...")
                 policy.training = False  # Switch to evaluation mode
                 
-                # Run single evaluation episode like test_policy
+                # Run single evaluation episode
                 eval_observation, eval_info = env.reset(seed=1000)
                 eval_data = {
                     'episode_number': ep,
@@ -545,7 +549,7 @@ def a2c_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
 def test_policy(env, policy, num_episodes=1):
     print("\nTesting trained policy...")
     policy.training = False
-    log_file = open('test_episode_log_a2c.txt', 'w')
+    log_file = open('ppo_reward_log.txt', 'w')
     evaluator = EpisodeEvaluator()
     
     for episode in range(num_episodes):
@@ -590,9 +594,9 @@ def test_policy(env, policy, num_episodes=1):
     policy.plot_training_progress()
 if __name__ == "__main__":
     # Constants
-    NUM_EPISODES = 1
+    NUM_EPISODES = 100
     LOGGING_INTERVAL = 300  # Log every 300 steps
-    SAVE_INTERVAL = 1000000    # Save model every 100 steps
+    SAVE_INTERVAL = 100    # Save model every 100 steps
 
     # Create environment
     env = gym.make(
