@@ -3,6 +3,7 @@ import gymnasium as gym
 from policy import GreedyPolicy, RandomPolicy
 from student_submissions.s2210xxx.ActorCriticPolicy import ActorCriticPolicy
 from student_submissions.s2210xxx.ProximalPolicyOptimization import ProximalPolicyOptimization
+from student_submissions.s2210xxx.ProximalPolicyOptimization2 import ActorCriticPolicy2
 from student_submissions.s2210xxx.DeepQNetworkPolicy import DeepQNetworkPolicy
 from student_submissions.s2210xxx.A2C import AdvantageActorCritic
 from student_submissions.s2210xxx.ProximalPolicyOptimization import EpisodeEvaluator
@@ -619,7 +620,7 @@ if __name__ == "__main__":
             save_interval=SAVE_INTERVAL
         )
     elif POLICY_TYPE == "ppo":
-        policy = ProximalPolicyOptimization()
+        policy = ActorCriticPolicy2()
         train_func = ppo_policy
         # Run training and testing
         train_func(

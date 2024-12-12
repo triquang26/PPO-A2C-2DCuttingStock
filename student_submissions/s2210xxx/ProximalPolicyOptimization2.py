@@ -164,14 +164,7 @@ class ActorCriticPolicy2(Policy):
         self.reward_history = deque(maxlen=10)
         
         # Initialize memory for A2C
-        self.memory = {
-            'states': [],
-            'actions': [],
-            'rewards': [],
-            'values': [],
-            'log_probs': [],
-            'dones': []
-        }
+        self.memory = A2CMemory()
 
     def initialize_networks(self, observation):
         """Initialize networks after getting first observation"""
@@ -282,6 +275,7 @@ class ActorCriticPolicy2(Policy):
                         log_prob = dist.log_prob(action)
                         value = self.critic(state)
                         self.memory.add(state.cpu(), action.item(), 0, value.item(), log_prob.item(), False)
+                        
         
         # Convert to actual placement action
         placement_action = self.convert_action(action.item(), observation)
@@ -302,91 +296,85 @@ class ActorCriticPolicy2(Policy):
 
     def update_policy(self, reward=None, done=None, info=None):
         """A2C Update: Compute advantage and update networks"""
+        print("[DEBUG] Entering update_policy")
+        print(f"[DEBUG] Training mode: {self.training}")
+        
         if not self.training:
             return
         
-        if reward is not None and len(self.memory['rewards']) > 0:
-            # Update the last reward and done flag
-            if self.memory['rewards']:
-                self.memory['rewards'][-1] = reward
-            else:
-                self.memory['rewards'].append(reward)
-            self.memory['dones'][-1] = done
+        print(f"[DEBUG] Memory size: {self.memory.size}")
+        print(f"[DEBUG] Reward: {reward}, Done: {done}")
+        
+        if reward is not None and self.memory.size > 0:
+            print("[DEBUG] Updating final reward and done flag")
+            self.memory.rewards[-1] = reward
+            self.memory.is_terminals[-1] = done
             
-            # Update metrics with correct filled ratio if info is provided
             if info and 'observation' in info:
                 correct_filled_ratio = self.calculate_filled_ratio(info['observation'])
                 self.prev_filled_ratio = correct_filled_ratio
         
-        # Only perform A2C update when episode is done
-        if done:
-            # Compute advantages and returns
-            rewards = self.memory['rewards']
-            dones = self.memory['dones']
-            values = self.memory['values']
+        if done and self.memory.size > 0:
+            print("[DEBUG] Starting policy update")
+            states, actions, rewards, values, old_log_probs, dones = self.memory.generate_batches()
             
+            if states is None:
+                print("[DEBUG] States is None - skipping update")
+                return
+                
+            print(f"[DEBUG] States shape: {states.shape}")
+            print(f"[DEBUG] Processing batch with {len(rewards)} transitions")
+            
+            # Compute returns and advantages
+            returns = []
             advantages = []
-            gae = 0
-            for t in reversed(range(len(rewards))):
-                if t == len(rewards) - 1:
-                    next_value = 0
-                else:
-                    next_value = values[t + 1]
-                delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
-                gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
-                advantages.insert(0, gae)
+            R = 0
             
-            advantages = torch.tensor(advantages, dtype=torch.float32).to(self.device)
-            returns = advantages + torch.tensor(values, dtype=torch.float32).to(self.device)
+            for r, v, d in zip(reversed(rewards), reversed(values), reversed(dones)):
+                if d:
+                    R = 0
+                R = r + self.gamma * R
+                advantage = R - v
+                returns.append(R)
+                advantages.append(advantage)
+                
+            returns = torch.tensor(list(reversed(returns))).to(self.device)
+            advantages = torch.tensor(list(reversed(advantages))).to(self.device)
             
-            # Normalize advantages and returns
+            # Normalize advantages
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-            returns = (returns - returns.mean()) / (returns.std() + 1e-8)
             
-            # Convert memory to tensors
-            states = torch.stack(self.memory['states']).to(self.device)
-            actions = torch.tensor(self.memory['actions'], dtype=torch.long, device=self.device)
-            old_log_probs = torch.tensor(self.memory['log_probs'], dtype=torch.float32, device=self.device)
-            
-            # Forward pass
+            # Get current predictions
             logits = self.actor(states)
+            current_values = self.critic(states)
+            
+            # Compute losses
             dist = torch.distributions.Categorical(logits=logits)
-            new_log_probs = dist.log_prob(actions)
-            entropy = dist.entropy().mean()
+            current_log_probs = dist.log_prob(actions)
             
-            # Actor loss without clipping
-            actor_loss = -(new_log_probs * advantages).mean()
+            # Actor loss
+            actor_loss = -(advantages * current_log_probs).mean()
             
-            # Critic loss (MSE)
-            value_pred = self.critic(states).squeeze(-1)
-            critic_loss = F.mse_loss(value_pred, returns)
+            # Critic loss
+            critic_loss = F.mse_loss(current_values.squeeze(), returns)
             
-            # Total loss
-            total_loss = actor_loss + 0.5 * critic_loss - self.entropy_coef * entropy
+            print(f"[DEBUG] Actor loss: {actor_loss.item():.4f}")
+            print(f"[DEBUG] Critic loss: {critic_loss.item():.4f}")
             
-            # Backward pass and optimization
+            # Update actor
             self.actor_optimizer.zero_grad()
-            self.critic_optimizer.zero_grad()
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=0.5)
-            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=0.5)
+            actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
             self.actor_optimizer.step()
+            
+            # Update critic
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
             self.critic_optimizer.step()
             
-            # Log metrics
-            avg_reward = np.mean(self.reward_history) if self.reward_history else 0
-            print(f"Episode {len(self.metrics.episode_history['episode_numbers'])}: Average Reward: {avg_reward:.2f}")
-            self.reward_history.clear()
-            
             # Clear memory
-            self.memory = {
-                'states': [],
-                'actions': [],
-                'rewards': [],
-                'values': [],
-                'log_probs': [],
-                'dones': []
-            }
+            self.memory.clear()
 
     def save_model(self, filename):
         if not filename.endswith('.pt'):
@@ -1288,3 +1276,88 @@ class EpisodeEvaluator:
         summary += f"Total Reward: {self.metrics['total_reward']:.2f}\n"
         summary += "="*70
         return summary
+
+class A2CMemory:
+    def __init__(self):
+        self._states = []
+        self._actions = []
+        self._rewards = []
+        self._values = []
+        self._log_probs = []
+        self._is_terminals = []
+    
+    @property
+    def states(self):
+        return self._states
+    
+    @property
+    def actions(self):
+        return self._actions
+        
+    @property
+    def rewards(self):
+        return self._rewards
+        
+    @property
+    def values(self):
+        return self._values
+        
+    @property
+    def log_probs(self):
+        return self._log_probs
+        
+    @property
+    def is_terminals(self):
+        return self._is_terminals
+    @property 
+    def size(self):
+        return len(self._rewards)
+    def add(self, state, action, reward, value, log_prob, done):
+        self._states.append(state)
+        self._actions.append(action)
+        self._rewards.append(reward)
+        self._values.append(value)
+        self._log_probs.append(log_prob) 
+        self._is_terminals.append(done)
+
+    def clear(self):
+        self._states.clear()
+        self._actions.clear()
+        self._rewards.clear()
+        self._values.clear()
+        self._log_probs.clear()
+        self._is_terminals.clear()
+        
+    def generate_batches(self):
+        if len(self._states) == 0:
+            return None, None, None, None, None, None
+            
+        states = torch.stack(self._states)
+        actions = torch.tensor(self._actions)
+        rewards = torch.tensor(self._rewards)
+        values = torch.tensor(self._values)
+        log_probs = torch.tensor(self._log_probs)
+        is_terminals = torch.tensor(self._is_terminals)
+        
+        return states, actions, rewards, values, log_probs, is_terminals
+
+# def update_policy(self, reward, done):
+#     if reward is not None and len(self.memory.rewards) > 0:
+#         # Store final reward and done flag
+#         self.memory.rewards[-1] = reward
+#         self.memory.is_terminals[-1] = done
+        
+#         # Get data from memory
+#         states, actions, rewards, values, old_log_probs, dones = self.memory.generate_batches()
+        
+#         # Convert to device
+#         states = states.to(self.device)
+#         actions = actions.to(self.device)
+#         rewards = rewards.to(self.device)
+#         values = values.to(self.device)
+#         old_log_probs = old_log_probs.to(self.device)
+        
+#         # Rest of your existing PPO update logic...
+        
+#         # Clear memory after update
+#         self.memory.clear()
