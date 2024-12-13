@@ -1,2 +1,0 @@
-Initial info: {'filled_ratio': 0.0}
-Error occurred: element 0 of tensors does not require grad and does not have a grad_fn

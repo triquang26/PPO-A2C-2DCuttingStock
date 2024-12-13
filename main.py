@@ -1,15 +1,13 @@
 import gym_cutting_stock
 import gymnasium as gym
+import matplotlib.pyplot as plt
+import numpy as np
 from policy import GreedyPolicy, RandomPolicy
-from student_submissions.s2210xxx.ActorCriticPolicy import ActorCriticPolicy
 from student_submissions.s2210xxx.ProximalPolicyOptimization import ProximalPolicyOptimization
-from student_submissions.s2210xxx.ProximalPolicyOptimization2 import ActorCriticPolicy2
-from student_submissions.s2210xxx.DeepQNetworkPolicy import DeepQNetworkPolicy
-from student_submissions.s2210xxx.A2C import AdvantageActorCritic
-from student_submissions.s2210xxx.ProximalPolicyOptimization import EpisodeEvaluator
+from student_submissions.s2210xxx.A2C import ActorCriticPolicy2
+from student_submissions.s2210xxx.EpisodeEvaluator import EpisodeEvaluator
 import signal
 import sys
-
 # Add global variable for graceful shutdown
 should_exit = False
 
@@ -22,118 +20,35 @@ def signal_handler(signum, frame):
 # Register signal handler
 signal.signal(signal.SIGINT, signal_handler)
 
-def actor_critics_policy(env, policy, num_episodes=100, logging_interval=300, save_interval=100):
-    """
-    Train and test an actor-critic policy with structure similar to PPO
-    """
-    evaluator = EpisodeEvaluator()
-    log_file = open('actor_critic_training_log.txt', 'w')
+def calculate_metrics(observation):
+    """Calculate trimloss and fill ratio from observation"""
+    total_stocks = len(observation['stocks'])
+    used_stocks = 0
+    total_used_area = 0
+    total_stock_area = 0
     
-    def log_info(message, console=True):
-        log_file.write(message + '\n')
-        log_file.flush()
-        if console:
-            print(message)
-
-    observation, info = env.reset(seed=42)
-    log_info("Initial info: " + str(info))
-
-    # Training variables
-    ep = 0
-    best_reward = float('-inf')
-    total_steps = 0
-
-    try:
-        while ep < num_episodes and not should_exit:
-            episode_reward = 0
-            step = 0
-            
-            # Training phase
-            while True and not should_exit:
-                # Get action from policy
-                action = policy.get_action(observation, info)
-                
-                # Take action in environment
-                next_observation, env_reward, terminated, truncated, info = env.step(action)
-                
-                # Calculate reward using policy's method
-                calculated_reward = policy.calculate_reward(action, observation, info)
-                episode_reward += calculated_reward
-                
-                # Update policy with calculated reward
-                policy.update_policy(calculated_reward, terminated or truncated)
-                
-                # Move to next state
-                observation = next_observation
-                step += 1
-                total_steps += 1
-                
-                # Save model periodically
-                if total_steps % save_interval == 0:
-                    log_info(f"\nSaving model at step {total_steps}...")
-                    policy.save_model(f"model_actor_critic_step_{total_steps}")
-
-                if terminated or truncated:
-                    log_info(f"\n{'='*50}")
-                    log_info(f"Episode {ep} FINISHED:")
-                    log_info(f"Total steps: {step}")
-                    log_info(f"Final filled ratio: {info['filled_ratio']:.3f}")
-                    log_info(f"Episode reward: {episode_reward:.2f}")
-                    log_info("="*50 + "\n")
-                    
-                    if episode_reward > best_reward:
-                        best_reward = episode_reward
-                        log_info("\nNew best reward achieved! Saving model...")
-                        policy.save_model("model_actor_critic_best")
-                    
-                    observation, info = env.reset(seed=ep)
-                    ep += 1
-                    break
-
-            # Evaluation phase every 10 episodes
-            if ep > 0 and ep % 10 == 0:
-                log_info("\nRunning evaluation phase...")
-                policy.training = False  # Switch to evaluation mode
-                
-                # Run single evaluation episode
-                eval_observation, eval_info = env.reset(seed=1000)
-                eval_data = {
-                    'episode_number': ep,
-                    'steps': 0,
-                    'total_reward': 0
-                }
-                
-                while True:
-                    eval_action = policy.get_action(eval_observation, eval_info)
-                    eval_next_obs, _, eval_terminated, eval_truncated, eval_info = env.step(eval_action)
-                    
-                    # Calculate reward using policy's method
-                    eval_reward = policy.calculate_reward(eval_action, eval_observation, eval_info)
-                    eval_data['total_reward'] += eval_reward
-                    eval_data['steps'] += 1
-                    
-                    eval_observation = eval_next_obs
-                    
-                    if eval_terminated or eval_truncated:
-                        # Get evaluation summary using evaluator
-                        summary = evaluator.evaluate_episode(eval_observation, eval_info, eval_data)
-                        log_info(summary)
-                        break
-                
-                policy.training = True  # Switch back to training mode
-
-    except Exception as e:
-        log_info(f"Error occurred: {str(e)}")
-        policy.save_model(f"model_actor_critic_error_step_{total_steps}")
-        raise e
-    finally:
-        log_file.close()
+    for stock in observation['stocks']:
+        stock_w = np.sum(np.any(stock != -2, axis=1))
+        stock_h = np.sum(np.any(stock != -2, axis=0))
+        stock_area = stock_w * stock_h
+        used_area = np.sum(stock >= 0)  # Count non-empty cells
         
-    # Run final test
-    if not should_exit:
-        test_policy(env, policy)
 
-def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interval=100):
+        # Check if stock is used
+        if used_area > 0:
+            used_stocks += 1
+            total_used_area += used_area
+            total_stock_area += stock_area
+    
+    # Calculate trimloss (ratio of unused area in used stocks)
+    trimloss = (total_stock_area - total_used_area) / total_stock_area if total_stock_area > 0 else 0.0
+    
+    # Calculate fill ratio (ratio of used stocks to total stocks)
+    fill_ratio = used_stocks / total_stocks if total_stocks > 0 else 0.0
+    
+    return trimloss, fill_ratio
+
+def ppo_policy(env, policy, num_episodes=100):
     evaluator = EpisodeEvaluator()
     log_file = open('training_log.txt', 'w')
     
@@ -155,6 +70,7 @@ def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
         while ep < num_episodes and not should_exit:
             episode_reward = 0
             step = 0
+            final_observation = None
             
             # Training phase
             while True and not should_exit:
@@ -164,6 +80,7 @@ def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
                 episode_reward += calculated_reward
                 policy.update_policy(calculated_reward, terminated or truncated)
                 
+                final_observation = next_observation
                 observation = next_observation
                 step += 1
                 total_steps += 1
@@ -183,16 +100,35 @@ def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
                     if episode_reward > best_reward:
                         best_reward = episode_reward
                         log_info("\nNew best reward achieved! Saving model...")
-                        policy.save_model("model_ppo_best")
+                        if isinstance(policy, ProximalPolicyOptimization):
+                            policy.save_model("model_ppo_best")
+                        elif isinstance(policy, ActorCriticPolicy2):
+                            policy.save_model("model_a2c_best")
                     
                     # Save model every 10 episodes
                     if ep > 0 and ep % 10 == 0:
                         log_info(f"\nSaving model at episode {ep}...")
-                        policy.save_model(f"model_ppo_episode_{ep}")
+                        if isinstance(policy, ProximalPolicyOptimization):
+                            policy.save_model("model_ppo_best")
+                        elif isinstance(policy, ActorCriticPolicy2):
+                            policy.save_model("model_a2c_best")
                     
                     observation, info = env.reset(seed=ep)
                     ep += 1
                     break
+            
+            
+            # Add after printing final_observation['stocks']:
+            # trimloss, fill_ratio = calculate_metrics(final_observation)
+            # print(f"Episode TrimLoss: {trimloss:.3f}")
+            # print(f"Episode Fill Ratio: {fill_ratio:.3f}")
+            
+            eval_data = {
+                'episode_number': ep,
+            }
+
+            ep_summary = evaluator.evaluate_episode(final_observation, eval_data)
+            print(ep_summary)
 
             # Evaluation phase every 10 episodes
             if ep > 0 and ep % 10 == 0:
@@ -220,12 +156,13 @@ def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
                     
                     if eval_terminated or eval_truncated:
                         # Get evaluation summary using evaluator
-                        summary = evaluator.evaluate_episode(eval_observation, eval_info, eval_data)
+                        summary = evaluator.evaluate_episode(eval_observation, eval_data)
+                        print(summary)
                         log_info(summary)
                         break
                 
                 policy.training = True  # Switch back to training mode
-
+        evaluator.plot_metrics()
     except Exception as e:
         log_info(f"Error occurred: {str(e)}")
         policy.save_model(f"model_ppo_error_step_{total_steps}")
@@ -234,139 +171,9 @@ def ppo_policy(env, policy, num_episodes=100, logging_interval=300, save_interva
         log_file.close()
         
     # Run final test
-    if not should_exit:
-        test_policy(env, policy)
+    # if not should_exit:
+    #     test_policy(env, policy)
 
-def dqn_policy(env, policy, num_episodes=100, logging_interval=300, save_interval=100):
-    """
-    Train and test a DQN policy
-    
-    Args:
-        env: Gymnasium environment
-        policy: Policy object implementing get_action() and update_policy()
-        num_episodes: Number of training episodes
-        logging_interval: Steps between detailed logging
-        save_interval: Steps between model saves
-    """
-    # Reset environment
-    observation, info = env.reset(seed=42)
-    print("Initial info:", info)
-
-    # Training variables
-    ep = 0
-    best_reward = float('-inf')
-    episode_rewards = []
-    total_steps = 0
-
-    try:
-        while ep < num_episodes and not should_exit:
-            episode_reward = 0
-            step = 0
-            
-            while True and not should_exit:
-                # Get action from policy
-                action = policy.get_action(observation, info)
-                
-                # Take action in environment
-                next_observation, env_reward, terminated, truncated, info = env.step(action)
-                
-                # Calculate reward using policy's method
-                calculated_reward = policy.calculate_reward(action, observation, info)
-                episode_reward += calculated_reward
-                
-                # Update policy với calculated reward
-                policy.update_policy(calculated_reward, terminated or truncated)
-                
-                # Move to next state
-                observation = next_observation
-                step += 1
-                total_steps += 1
-                
-                # Save model every SAVE_INTERVAL steps
-                if total_steps % save_interval == 0:
-                    print(f"\nSaving model at step {total_steps}...")
-                    policy.save_model(f"model_dqn_step_{total_steps}")
-                
-                # Detailed logging every LOGGING_INTERVAL steps
-                if step % logging_interval == 0:
-                    print("\n" + "="*50)
-                    print(f"Episode {ep} - Step {step} Status:")
-                    print(f"Current filled ratio: {info['filled_ratio']:.3f}")
-                    print("\nProducts remaining:")
-                    for i, prod in enumerate(observation['products']):
-                        if prod['quantity'] > 0:
-                            print(f"Product {i}: size={prod['size']}, quantity={prod['quantity']}")
-                    print("\nCurrent reward status:")
-                    print(f"Episode reward so far: {episode_reward:.2f}")
-                    print("="*50 + "\n")
-                
-                # Regular progress printing
-                elif step % 100 == 0:
-                    print(f"Episode {ep}, Step {step}, Total Steps {total_steps}")
-                    print(f"Episode Reward (calculated): {episode_reward:.2f}")
-                    print(f"Last Step Reward (calculated): {calculated_reward:.2f}")
-                
-                if terminated or truncated:
-                    episode_rewards.append(episode_reward)
-                    avg_reward = sum(episode_rewards[-10:]) / min(len(episode_rewards), 10)
-                    
-                    print("\n" + "="*50)
-                    print(f"Episode {ep} FINISHED:")
-                    print(f"Total steps: {step}")
-                    print(f"Final filled ratio: {info['filled_ratio']:.3f}")
-                    print("\nFinal products state:")
-                    for i, prod in enumerate(observation['products']):
-                        print(f"Product {i}: size={prod['size']}, quantity={prod['quantity']}")
-                    print(f"\nEpisode reward: {episode_reward:.2f}")
-                    print(f"Average reward (last 10): {avg_reward:.2f}")
-                    print(f"Best reward so far: {best_reward:.2f}")
-                    print("="*50 + "\n")
-                    
-                    if episode_reward > best_reward:
-                        best_reward = episode_reward
-                        # Save best model
-                        policy.save_model("model_dqn_best")
-                    
-                    # Reset for next episode
-                    observation, info = env.reset(seed=ep)
-                    ep += 1
-                    break
-
-        # Save final model
-        if should_exit:
-            print("Saving model before exit...")
-            policy.save_model(f"model_dqn_interrupted_step_{total_steps}")
-            print("Model saved. Exiting...")
-        else:
-            policy.save_model("model_dqn_final")
-            
-    except Exception as e:
-        print(f"Error occurred: {str(e)}")
-        print("Attempting to save model...")
-        policy.save_model(f"model_dqn_error_step_{total_steps}")
-        raise e
-
-    # After training, set to evaluation mode
-    print("\nTesting trained policy...")
-    policy.training = False
-    
-    # Test the trained policy
-    observation, info = env.reset(seed=1000)  # New seed for testing
-    total_reward = 0
-    
-    for _ in range(200):  # Test episodes
-        if should_exit:
-            break
-            
-        action = policy.get_action(observation, info)
-        observation, reward, terminated, truncated, info = env.step(action)
-        total_reward += reward
-        print(f"Test step reward: {reward:.2f}, Total: {total_reward:.2f}")
-        
-        if terminated or truncated:
-            print("Test episode finished")
-            print("Final info:", info)
-            observation, info = env.reset()
 
 def simple_policy_run(env, policy, num_steps=1000):
     """
@@ -401,7 +208,15 @@ def simple_policy_run(env, policy, num_steps=1000):
             observation, info = env.reset()
             total_reward = 0
 
-# def test_policy(env, policy, num_episodes=1):
+# def test_policy(env, policy, num_episodes=5):
+#     """
+#     Test the trained policy.
+    
+#     Args:
+#         env: Gymnasium environment
+#         policy: Trained Policy object
+#         num_episodes: Number of test episodes
+#     """
 #     print("\nTesting trained policy...")
 #     policy.training = False
 #     log_file = open('test_episode_log.txt', 'w')
@@ -411,13 +226,14 @@ def simple_policy_run(env, policy, num_steps=1000):
 #         observation, info = env.reset(seed=1000 + episode)
 #         episode_data = {
 #             'episode_number': episode + 1,
-#             'steps': 0,
-#             'total_reward': 0
+#             'trimloss': 0.0,       # Initialize trimloss
+#             'fill_ratio': 0.0      # Initialize fill_ratio
 #         }
+#         done = False
         
-#         while True:
+#         while not done and not should_exit:
 #             action = policy.get_action(observation, info)
-#             next_obs, env_reward, terminated, truncated, info = env.step(action)
+#             next_obs, reward, terminated, truncated, info = env.step(action)
             
 #             # Use policy's reward calculation instead of env reward
 #             calculated_reward = policy.calculate_reward(action, observation, info)
@@ -426,178 +242,115 @@ def simple_policy_run(env, policy, num_steps=1000):
 #             # Calculate waste for this step
 #             waste_metrics = evaluator.calculate_waste({'stocks': [observation['stocks'][action['stock_idx']]]})
             
-#             # Log step details
-#             step_log = f"\nStep {episode_data['steps'] + 1}:\n"
-#             step_log += f"Action: {action}\n"
-#             step_log += f"Step Reward: {calculated_reward:.3f}\n"
-#             step_log += f"Current Filled Ratio: {info['filled_ratio']:.3f}\n"
-#             step_log += f"Step Waste: {waste_metrics['total_waste']}\n"
-#             step_log += f"Episode Total Reward: {episode_data['total_reward']:.3f}\n"
-#             step_log += "-" * 50 + "\n"
+#             # Update trimloss and fill_ratio from info
+#             ep_trimloss = info.get('trimloss', 0.0)
+#             ep_fill_ratio = info.get('fill_ratio', 0.0)
+#             print("Episode TrimLoss: ", ep_trimloss)
+#             print("Episode Fill Ratio: ", ep_fill_ratio)
+
             
-#             log_file.write(step_log)
+    #         episode_data['trimloss'] += info.get('trimloss', 0.0)
+    #         episode_data['fill_ratio'] = info.get('fill_ratio', 0.0)  # Assuming fill_ratio is updated each step
             
-#             episode_data['steps'] += 1
-#             observation = next_obs
+    #         # Log step details
+    #         step_log = f"\nEpisode {episode + 1}, Step {episode_data['steps'] + 1}:\n"
+    #         step_log += f"Action: {action}\n"
+    #         step_log += f"Step Reward: {calculated_reward:.3f}\n"
+    #         step_log += f"Current Filled Ratio: {episode_data['fill_ratio']:.3f}\n"
+    #         step_log += f"Step Waste: {waste_metrics.get('total_waste', 0)}\n"
+    #         step_log += f"Episode Total Reward: {episode_data['total_reward']:.3f}\n"
+    #         step_log += f"Episode TrimLoss: {episode_data['trimloss']:.3f}\n"
+    #         step_log += "-" * 50 + "\n"
             
-#             if terminated or truncated:
-#                 summary = evaluator.evaluate_episode(observation, info, episode_data)
-#                 log_file.write(summary + "\n")
-#                 break
+    #         log_file.write(step_log)
+            
+    #         episode_data['steps'] += 1
+    #         observation = next_obs
+    #         done = terminated or truncated
+        
+    #     # Calculate average trimloss per episode
+    #     if episode_data['steps'] > 0:
+    #         episode_data['trimloss'] /= episode_data['steps']
+        
+    #     # Evaluate and log episode summary
+    #     summary = evaluator.evaluate_episode(observation, info, episode_data)     
+    #     log_file.write(summary + "\n")
+    #     print(summary)
+        
+    #     if done:
+    #         ep += 1
+
+    # log_file.close()
+
+def benchmark_policies(env, policies, num_episodes=5, seed=1000):
+    evaluators = {name: EpisodeEvaluator() for name in policies.keys()}
     
-#     log_file.close()
-def a2c_policy(env, policy, num_episodes=100, logging_interval=300, save_interval=100):
-    evaluator = EpisodeEvaluator()
-    log_file = open('training_log_a2c.txt', 'w')
-    
-    def log_info(message, console=True):
-        log_file.write(message + '\n')
-        log_file.flush()
-        if console:
-            print(message)
-
-    observation, info = env.reset(seed=42)
-    log_info("Initial info: " + str(info))
-
-    # Training variables
-    ep = 0
-    best_reward = float('-inf')
-    total_steps = 0
-    should_exit = False  # Define your own condition to exit training if needed
-
-    try:
-        while ep < num_episodes and not should_exit:
-            episode_reward = 0
-            step = 0
+    for policy_name, policy in policies.items():
+        print(f"\nTesting {policy_name}...")
+        env.reset(seed=seed)
+        policy.training = False
+        log_file = open(f'benchmark_{policy_name}.txt', 'w')
+        
+        for episode in range(num_episodes):
+            observation, info = env.reset(seed=seed + episode)
+            episode_data = {
+                'episode_number': episode + 1,
+                'steps': 0,
+                'trimloss': 0
+            }
+            done = False
             
-            # Training phase
-            while True and not should_exit:
+            while not done:
                 action = policy.get_action(observation, info)
-                next_observation, env_reward, terminated, truncated, info = env.step(action)
-                calculated_reward = policy.calculate_reward(action, observation, info)
-                episode_reward += calculated_reward
-                policy.update_policy(calculated_reward, terminated or truncated)
-                
-                observation = next_observation
-                step += 1
-                total_steps += 1
-                
-                # Save model periodically
-                if total_steps % save_interval == 0:
-                    log_info(f"\nSaving model at step {total_steps}...")
-                    policy.save_model(f"model_a2c_step_{total_steps}")
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                observation = next_obs
+                episode_data['steps'] += 1
+                done = terminated or truncated
+            
+            # Evaluate episode
+            eval_data = {
+                'episode_number': episode,
+            }
+            summary = evaluators[policy_name].evaluate_episode(observation, eval_data)
+            log_file.write(summary + "\n")
+            print(summary)
         
-                if terminated or truncated:
-                    policy.log_episode_summary(
-                        steps=step,
-                        filled_ratio=info['filled_ratio'],
-                        episode_reward=episode_reward,
-                        observation=observation
-                    )
-                    
-                    if episode_reward > best_reward:
-                        best_reward = episode_reward
-                        log_info("\nNew best reward achieved! Saving model...")
-                        policy.save_model("model_a2c_best")
-                    
-                    observation, info = env.reset(seed=ep)
-                    ep += 1
-                    break
-
-            # Evaluation phase every 10 episodes
-            if ep > 0 and ep % 10 == 0:
-                log_info("\nRunning evaluation phase...")
-                policy.training = False  # Switch to evaluation mode
-                
-                # Run single evaluation episode like test_policy
-                eval_observation, eval_info = env.reset(seed=1000)
-                eval_data = {
-                    'episode_number': ep,
-                    'steps': 0,
-                    'total_reward': 0
-                }
-                
-                while True:
-                    eval_action = policy.get_action(eval_observation, eval_info)
-                    eval_next_obs, _, eval_terminated, eval_truncated, eval_info = env.step(eval_action)
-                    
-                    # Calculate reward using policy's method
-                    eval_reward = policy.calculate_reward(eval_action, eval_observation, eval_info)
-                    eval_data['total_reward'] += eval_reward
-                    eval_data['steps'] += 1
-                    
-                    eval_observation = eval_next_obs
-                    
-                    if eval_terminated or eval_truncated:
-                        # Get evaluation summary using evaluator
-                        summary = evaluator.evaluate_episode(eval_observation, eval_info, eval_data)
-                        log_info(summary)
-                        break
-                
-                policy.training = True  # Switch back to training mode
-
-    except Exception as e:
-        log_info(f"Error occurred: {str(e)}")
-        policy.save_model(f"model_a2c_error_step_{total_steps}")
-        raise e
-    finally:
         log_file.close()
-        
-    # Run final test
-    if not should_exit:
-        test_policy(env, policy)
+    
+    # Plot comparative results
+    plt.figure(figsize=(15, 5))
+    
+    # Plot filled ratios
+    plt.subplot(1, 2, 1)
+    for name, evaluator in evaluators.items():
+        plt.plot(evaluator.history['episode_numbers'], 
+                evaluator.history['filled_ratios'], 
+                label=name)
+    plt.title('Filled Ratio Comparison')
+    plt.xlabel('Episode')
+    plt.ylabel('Filled Ratio')
+    plt.grid(True)
+    plt.legend()
+    
+    # Plot trim losses
+    plt.subplot(1, 2, 2)
+    for name, evaluator in evaluators.items():
+        plt.plot(evaluator.history['episode_numbers'], 
+                evaluator.history['trim_losses'], 
+                label=name)
+    plt.title('Trim Loss Comparison')
+    plt.xlabel('Episode')
+    plt.ylabel('Trim Loss')
+    plt.grid(True)
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig('policy_comparison.png')
+    plt.close()
 
-def test_policy(env, policy, num_episodes=1):
-    print("\nTesting trained policy...")
-    policy.training = False
-    log_file = open('ppo_reward_log.txt', 'w')
-    evaluator = EpisodeEvaluator()
-    
-    for episode in range(num_episodes):
-        observation, info = env.reset(seed=1000 + episode)
-        episode_data = {
-            'episode_number': episode + 1,
-            'steps': 0,
-            'total_reward': 0
-        }
-        
-        while True:
-            action = policy.get_action(observation, info)
-            next_obs, env_reward, terminated, truncated, info = env.step(action)
-            
-            # Use policy's reward calculation instead of env reward
-            calculated_reward = policy.calculate_reward(action, observation, info)
-            episode_data['total_reward'] += calculated_reward
-            
-            # Calculate waste for this step
-            waste_metrics = evaluator.calculate_waste({'stocks': [observation['stocks'][action['stock_idx']]]})
-            
-            # Log step details
-            step_log = f"\nStep {episode_data['steps'] + 1}:\n"
-            step_log += f"Action: {action}\n"
-            step_log += f"Step Reward: {calculated_reward:.3f}\n"
-            step_log += f"Current Filled Ratio: {info['filled_ratio']:.3f}\n"
-            step_log += f"Step Waste: {waste_metrics['total_waste']}\n"
-            step_log += f"Episode Total Reward: {episode_data['total_reward']:.3f}\n"
-            step_log += "-" * 50 + "\n"
-            
-            log_file.write(step_log)
-            
-            episode_data['steps'] += 1
-            observation = next_obs
-            
-            if terminated or truncated:
-                summary = evaluator.evaluate_episode(observation, info, episode_data)
-                log_file.write(summary + "\n")
-                break
-    
-    log_file.close()
-    policy.plot_training_progress()
 if __name__ == "__main__":
     # Constants
-    NUM_EPISODES = 100
-    LOGGING_INTERVAL = 300  # Log every 300 steps
-    SAVE_INTERVAL = 100    # Save model every 100 steps
+    NUM_EPISODES = 10
 
     # Create environment
     env = gym.make(
@@ -607,46 +360,54 @@ if __name__ == "__main__":
     
     # Choose which policy to run
     POLICY_TYPE = "ppo"  # Options: "actor_critic", "ppo", "dqn", "random", "greedy"
-    
-    if POLICY_TYPE == "a2c":
-        policy = AdvantageActorCritic()
-        train_func = a2c_policy
-        # Run training and testing
+    RUNNING_TYPE = "benchmark"  # Options: "train", "test", "benchmark"
+
+    if RUNNING_TYPE == "train":
+        if POLICY_TYPE == "a2c":
+            policy = ActorCriticPolicy2()
+            train_func = ppo_policy
+        elif POLICY_TYPE == "ppo":
+            policy = ProximalPolicyOptimization()
+            train_func = ppo_policy
+            # Run training and testing
         train_func(
-            env=env,
-            policy=policy,
-            num_episodes=NUM_EPISODES,
-            logging_interval=LOGGING_INTERVAL,
-            save_interval=SAVE_INTERVAL
+                env=env,
+                policy=policy,
+                num_episodes=NUM_EPISODES,
         )
-    elif POLICY_TYPE == "ppo":
-        policy = ActorCriticPolicy2()
-        train_func = ppo_policy
-        # Run training and testing
-        train_func(
-            env=env,
-            policy=policy,
-            num_episodes=NUM_EPISODES,
-            logging_interval=LOGGING_INTERVAL,
-            save_interval=SAVE_INTERVAL
-        )
-    elif POLICY_TYPE == "random":
-        policy = RandomPolicy()
-        simple_policy_run(env=env, policy=policy)
-    elif POLICY_TYPE == "greedy":
-        policy = GreedyPolicy()
-        simple_policy_run(env=env, policy=policy)
-    else:  # dqn
-        policy = DeepQNetworkPolicy()
-        train_func = dqn_policy
-        # Run training and testing
-        train_func(
-            env=env,
-            policy=policy,
-            num_episodes=NUM_EPISODES,
-            logging_interval=LOGGING_INTERVAL,
-            save_interval=SAVE_INTERVAL
-        )
+        # elif POLICY_TYPE == "random":
+        #     policy = RandomPolicy()
+        #     simple_policy_run(env=env, policy=policy)
+        # elif POLICY_TYPE == "greedy":
+        #     policy = GreedyPolicy()
+        #     simple_policy_run(env=env, policy=policy)
+
+    elif RUNNING_TYPE == "benchmark":
+        # Run benchmarking
+            # Load trained policies
+        a2c_policy = ActorCriticPolicy2()
+        a2c_policy.load_model("model_a2c_best")
+        
+        ppo_policy = ProximalPolicyOptimization()
+        ppo_policy.load_model("model_ppo_best")
+
+    # Create policies dictionary for benchmarking
+        policies = {
+            'A2C': a2c_policy,
+            'PPO': ppo_policy
+        }
+        benchmark_policies(env, policies, NUM_EPISODES)
+    # else:
+    #     # Load trained policy
+    #     if POLICY_TYPE == "a2c":
+    #         policy = ActorCriticPolicy2()
+    #         policy.load_model("model_a2c_best")
+    #     elif POLICY_TYPE == "ppo":
+    #         policy = ProximalPolicyOptimization()
+    #         policy.load_model("model_ppo_best")
+
+        
+    #     test_policy(env, policy, num_episodes=5)
     
     env.close()
 

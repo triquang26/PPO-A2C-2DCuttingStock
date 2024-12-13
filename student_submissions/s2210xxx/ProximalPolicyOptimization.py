@@ -785,11 +785,10 @@ class ProximalPolicyOptimization(Policy):
             current_episode = len(self.metrics.episode_history['episode_numbers'])
             self.metrics.add_episode_data(current_episode, filled_ratio, episode_reward)
             
-            print(f"\n{'='*30} Episode Summary {'='*30}")
-            print(f"Episode {current_episode}:")
-            print(f"Final Filled Ratio: {filled_ratio:.3f}")
-            print(f"Episode Reward: {episode_reward:.2f}")
-            print("="*70)
+            # print(f"\n{'='*30} Episode Summary {'='*30}")
+            # print(f"Episode {current_episode}:")
+            # print(f"Episode Reward: {episode_reward:.2f}")
+            # print("="*70)
 
     def find_best_fitting_stock(self, observation, product_size):
         """Enhanced stock selection with better utilization balance"""
@@ -1271,74 +1270,3 @@ class ProximalPolicyOptimization(Policy):
         if total_stock_area > 0:
             return total_used_area / total_stock_area
         return 0.0
-
-class EpisodeEvaluator:
-    def __init__(self):
-        self.metrics = {
-            'episode_number': 0,
-            'steps': 0,
-            'filled_ratio': 0.0,
-            'total_reward': 0.0,
-            'total_waste': 0.0,
-            'waste_per_stock': 0.0,
-            'num_stocks_used': 0
-        }
-    
-    def calculate_waste(self, observation):
-        """Calculate waste for all used stocks"""
-        total_waste = 0
-        used_stocks = 0
-        
-        for stock in observation['stocks']:
-            if np.any(stock > 0):  # Stock has been used
-                stock_area = stock.shape[0] * stock.shape[1]
-                empty_area = np.sum(stock == -1)  # Count cells with -1
-                waste = empty_area               # Waste is the empty area
-                total_waste += waste
-                used_stocks += 1
-            
-        return {
-            'total_waste': total_waste,
-            'num_stocks': used_stocks,
-            'waste_per_stock': total_waste / used_stocks if used_stocks > 0 else 0
-        }
-
-    def evaluate_episode(self, observation, info, episode_data):
-        """Calculate comprehensive episode quality score with correct filled ratio"""
-        waste_metrics = self.calculate_waste(observation)
-        
-        # Calculate correct filled ratio
-        total_used_area = 0
-        total_stock_area = 0
-        for stock in observation['stocks']:
-            if np.any(stock != -1):
-                stock_area = stock.shape[0] * stock.shape[1]
-                used_area = np.sum(stock != -1)
-                total_used_area += used_area
-                total_stock_area += stock_area
-        
-        correct_filled_ratio = total_used_area / total_stock_area if total_stock_area > 0 else 0.0
-        
-        self.metrics.update({
-            'episode_number': episode_data['episode_number'],
-            'steps': episode_data['steps'],
-            'filled_ratio': correct_filled_ratio,
-            'total_reward': episode_data['total_reward'],
-            'total_waste': waste_metrics['total_waste'],
-            'waste_per_stock': waste_metrics['waste_per_stock'],
-            'num_stocks_used': waste_metrics['num_stocks']
-        })
-        
-        return self.get_summary()
-    
-    def get_summary(self):
-        """Return formatted summary of episode performance"""
-        summary = f"\n{'='*20} Episode {self.metrics['episode_number']} Quality Report {'='*20}\n"
-        summary += f"Steps: {self.metrics['steps']}\n"
-        summary += f"Filled Ratio: {self.metrics['filled_ratio']:.3f}\n"
-        summary += f"Total Waste: {self.metrics['total_waste']}\n"
-        summary += f"Number of Stocks Used: {self.metrics['num_stocks_used']}\n"
-        summary += f"Waste per Stock: {self.metrics['waste_per_stock']:.1f}\n"
-        summary += f"Total Reward: {self.metrics['total_reward']:.2f}\n"
-        summary += "="*70
-        return summary
