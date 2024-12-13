@@ -1,1 +1,0 @@
-Initial info: {'filled_ratio': 0.0}
