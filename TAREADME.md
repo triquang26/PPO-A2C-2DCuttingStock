@@ -8,7 +8,7 @@ A project implementing reinforcement learning solutions for the cutting stock op
 2. Install dependencies:
 ```bash
 pip install -r requirements.txt
-
+```
 **Training**
 The project supports training two reinforcement learning algorithms:
 
@@ -16,13 +16,13 @@ The project supports training two reinforcement learning algorithms:
 2. Proximal Policy Optimization (PPO)
 ```bash
 python main.py
-
+```
 To train a model:
 ```python
 POLICY_TYPE = "ppo"  # Options: "a2c", "ppo"
 RUNNING_TYPE = "train"
 NUM_EPISODES = 10  # Adjust number of training episodes
-
+```
 Models are automatically saved:
 Best performing model: model_ppo_best.pt or model_a2c_best.pt
 Periodic saves every 10 episodes: model_ppo_episode_X.pt
@@ -35,7 +35,7 @@ To benchmark trained models:
 ```python
 RUNNING_TYPE = "benchmark"
 NUM_EPISODES = 10  # Number of evaluation episodes
-
+```
 2. Run
 ```bash
 python main.py
@@ -51,7 +51,7 @@ To load and test a saved model:
 ```python
 policy = ProximalPolicyOptimization()  # or ActorCriticPolicy2()
 policy.load_model("saved_models/model_ppo_best.pt")
-
+```
 **Visualization**
 The environment can be rendered by enabling:
 ```python
@@ -60,4 +60,5 @@ env = gym.make(
     "gym_cutting_stock/CuttingStock-v0",
     render_mode="human"
 )
+```
 
