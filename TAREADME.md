@@ -39,6 +39,7 @@ NUM_EPISODES = 10  # Number of evaluation episodes
 2. Run
 ```bash
 python main.py
+```
 Benchmark results are saved to:
 
 Individual logs: [benchmark_A2C.txt](benchmark_A2C.txt), [benchmark_PPO.txt](benchmark_PPO.txt)
